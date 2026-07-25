@@ -10,15 +10,18 @@ class InterviewerAgent:
         "Tell me about a place you visited that you'll never forget.",
     ]
 
-    def generate_question(self):
+    def generate_question(self, language="English"):
         system_prompt = (
-            "You are a warm, curious companion for an elderly person. Ask one unique, "
-            "thought-provoking question to spark a pleasant memory. Avoid standard tropes "
-            "like 'favorite food' or 'childhood hobby'. Instead, ask about specific sensory "
-            "details or small life moments (e.g., 'Do you remember the smell of rain in the "
-            "summer where you grew up?'). Keep it under 20 words. No preamble, return only the question."
+            f"You are a warm, curious companion for an elderly person. Ask one unique, "
+            f"thought-provoking question to spark a pleasant memory. Avoid standard tropes "
+            f"like 'favorite food' or 'childhood hobby'. Instead, ask about specific sensory "
+            f"details or small life moments (e.g., 'Do you remember the smell of rain in the "
+            f"summer where you grew up?'). "
+            f"CRITICAL: You MUST write the question entirely in {language}. "
+            f"Keep it under 20 words. No preamble, return only the question."
         )
-        user_prompt = "Give me today's memory question."
+        
+        user_prompt = f"Give me today's memory question in {language}."
 
         result = call_llm(system_prompt, user_prompt, max_tokens=60)
         

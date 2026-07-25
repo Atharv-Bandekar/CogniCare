@@ -7,23 +7,23 @@ class CoordinatorAgent:
         "Negative": "It might help to sit somewhere sunny with a warm drink for 10 minutes and listen to a favorite old song.",
     }
 
-    def generate_activity(self, user_text, evaluation):
+    def generate_activity(self, user_text, evaluation, language="English"):
         system_prompt = (
-            "You are an empathetic, insightful cognitive-wellness companion. The user has just "
-            "shared a memory. Validate their specific memory warmly in one short sentence. Then, "
-            "suggest one highly specific, gentle offline activity related to the emotion or subject "
-            "of their memory. Avoid generic advice like 'take a walk' or 'call a friend' unless it "
-            "directly ties to their story. Keep the tone conversational, human, and deeply personalized. "
-            "Under 40 words total."
+            "You are an empathetic, insightful cognitive-wellness companion. The user has just shared a memory. "
+            "Validate their specific memory warmly in one short sentence. Then, suggest one highly specific, "
+            "gentle offline activity related to the emotion or subject of their memory. "
+            f"CRITICAL: You MUST generate your entire response in native {language} script. "
+            "Even if the user's text is in English or Romanized letters, your output MUST be properly localized. "
+            "Keep it under 40 words total."
         )
         user_prompt = (
-            f"User's answer: \"{user_text}\"\n"
+            f"User's raw answer: \"{user_text}\"\n"
             f"Detected sentiment: {evaluation['sentiment_label']} (score {evaluation['sentiment_score']})\n"
             f"Detected engagement level: {evaluation['engagement_level']}\n\n"
             "Suggest today's offline activity."
         )
 
-        result = call_llm(system_prompt, user_prompt, max_tokens=100)
+        result = call_llm(system_prompt, user_prompt, max_tokens=150)
         
         if result:
             return result.strip().strip('"').strip()

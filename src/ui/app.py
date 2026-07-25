@@ -1,7 +1,7 @@
 import threading
-import tkinter as tk
+import customtkinter as ctk
 from tkinter import ttk, messagebox
-
+from src.agents.base import translate_to_english, translate_text
 from src.database.db import (
     get_demo_user_id,
     log_conversation,
@@ -11,121 +11,239 @@ from src.database.db import (
 from src.agents.interviewer import InterviewerAgent
 from src.agents.evaluator import EvaluatorAgent
 from src.agents.coordinator import CoordinatorAgent
+from src.utils.audio import play_audio, record_audio
 
-BG_COLOR = "#F5F7FA"
-ACCENT_COLOR = "#2E6F95"
-FONT_LARGE = ("Helvetica", 20, "bold")
-FONT_MED = ("Helvetica", 14)
-FONT_BTN = ("Helvetica", 16, "bold")
+# System Appearance & Color Theme
+ctk.set_appearance_mode("System")  # Follows OS theme (Dark/Light)
+ctk.set_default_color_theme("blue")
 
 
-class CogniCareApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("CogniCare AI - Cognitive Engagement Assistant")
-        self.root.geometry("900x700")
-        self.root.configure(bg=BG_COLOR)
+class CogniCareApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-        # Initialize Agents
+        self.title("CogniCare AI - Cognitive Engagement Assistant")
+        self.geometry("950x850")
+        self.minsize(900, 750)
+
+        # Agents & State Initialization
         self.interviewer = InterviewerAgent()
         self.evaluator = EvaluatorAgent()
         self.coordinator = CoordinatorAgent()
 
-        # State
         self.user_id = get_demo_user_id()
+        self.original_question = None
         self.current_question = None
         self.current_conversation_id = None
 
-        self._build_notebook()
+        self.voice_mode = ctk.BooleanVar(value=False)
+        self.selected_lang = ctk.StringVar(value="English")
 
-        # Background thread to load DeBERTa
+        self._build_ui()
+
+        # Load DeBERTa asynchronously
         threading.Thread(target=self.evaluator.load_model, daemon=True).start()
+        
+        # Kick off Agent 1
+        self.after(200, self.run_agent_1)
 
-        # Kickoff Agent 1
-        self.root.after(200, self.run_agent_1)
+    def _build_ui(self):
+        # Master Tabview for Navigation
+        self.tabview = ctk.CTkTabview(self, corner_radius=15)
+        self.tabview.pack(fill="both", expand=True, padx=20, pady=20)
 
-    def _build_notebook(self):
-        style = ttk.Style()
-        style.configure("TNotebook.Tab", font=FONT_MED, padding=[16, 8])
-
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill="both", expand=True)
-
-        self.checkin_tab = tk.Frame(notebook, bg=BG_COLOR)
-        self.dashboard_tab = tk.Frame(notebook, bg=BG_COLOR)
-
-        notebook.add(self.checkin_tab, text="  Daily Check-In  ")
-        notebook.add(self.dashboard_tab, text="  Caregiver Dashboard  ")
+        self.checkin_tab = self.tabview.add("  Daily Check-In  ")
+        self.dashboard_tab = self.tabview.add("  Caregiver Dashboard  ")
 
         self._build_checkin_tab()
         self._build_dashboard_tab()
 
-        notebook.bind("<<NotebookTabChanged>>", lambda e: self.refresh_dashboard())
-
+    # -------------------------------------------------- DAILY CHECK-IN TAB --
     def _build_checkin_tab(self):
-        frame = self.checkin_tab
+        tab = self.checkin_tab
 
-        tk.Label(frame, text="CogniCare AI", font=("Helvetica", 26, "bold"),
-                 bg=BG_COLOR, fg=ACCENT_COLOR).pack(pady=(20, 5))
+        # Top Bar Controls (Language + Voice Switch)
+        top_bar = ctk.CTkFrame(tab, fg_color="transparent")
+        top_bar.pack(fill="x", padx=10, pady=(5, 10))
 
-        self.status_label = tk.Label(frame, text="Preparing today's question...",
-                                     font=FONT_MED, bg=BG_COLOR, fg="#666666")
-        self.status_label.pack(pady=(0, 10))
+        lang_label = ctk.CTkLabel(top_bar, text="Language:", font=ctk.CTkFont(size=14, weight="bold"))
+        lang_label.pack(side="left", padx=(0, 10))
 
-        self.question_label = tk.Label(
-            frame, text="", font=FONT_LARGE, bg=BG_COLOR, fg="#222222",
-            wraplength=800, justify="center"
+        self.lang_dropdown = ctk.CTkOptionMenu(
+            top_bar,
+            values=["English", "Hindi", "Marathi", "Tamil"],
+            variable=self.selected_lang,
+            command=self.on_language_change,
+            width=120
         )
-        self.question_label.pack(pady=15, padx=20)
+        self.lang_dropdown.pack(side="left")
 
-        self.response_text = tk.Text(frame, height=5, width=60, font=FONT_MED,
-                                     wrap="word", relief="solid", borderwidth=1)
-        self.response_text.pack(pady=10, padx=20)
-
-        self.submit_btn = tk.Button(
-            frame, text="Submit My Answer", font=FONT_BTN, bg=ACCENT_COLOR,
-            fg="white", activebackground="#245a7a", relief="flat",
-            padx=20, pady=10, command=self.run_agent_2_and_3
+        self.voice_switch = ctk.CTkSwitch(
+            top_bar,
+            text="🎤 Voice Mode",
+            variable=self.voice_mode,
+            command=self.toggle_voice_mode,
+            font=ctk.CTkFont(size=14, weight="bold")
         )
-        self.submit_btn.pack(pady=10)
+        self.voice_switch.pack(side="right")
 
-        self.activity_frame = tk.Frame(frame, bg="#E8F0F5", relief="groove", borderwidth=1)
-        self.activity_label = tk.Label(
-            self.activity_frame, text="", font=FONT_MED, bg="#E8F0F5",
-            fg="#1E4E6B", wraplength=780, justify="left"
+        # Header Title & Dynamic Status
+        title_label = ctk.CTkLabel(
+            tab, 
+            text="CogniCare AI", 
+            font=ctk.CTkFont(size=28, weight="bold")
+        )
+        title_label.pack(pady=(10, 2))
+
+        self.status_label = ctk.CTkLabel(
+            tab, 
+            text="Preparing today's question...", 
+            font=ctk.CTkFont(size=14), 
+            text_color="gray"
+        )
+        self.status_label.pack(pady=(0, 15))
+
+        # Question Display Card
+        self.q_card = ctk.CTkFrame(tab, corner_radius=12)
+        self.q_card.pack(fill="x", padx=15, pady=5)
+
+        self.question_label = ctk.CTkLabel(
+            self.q_card,
+            text="",
+            font=ctk.CTkFont(family="Arial", size=22, weight="bold"), 
+            wraplength=800,
+            justify="center"
+        )
+        self.question_label.pack(padx=20, pady=20)
+
+        # "Try Another Question" Action
+        self.refresh_q_btn = ctk.CTkButton(
+            tab,
+            text="🔄 Try Another Question",
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray10", "gray90"),
+            hover_color=("gray85", "gray25"),
+            command=self.run_agent_1,
+            width=180
+        )
+        self.refresh_q_btn.pack(pady=(5, 15))
+
+        # Input Section Container
+        self.input_card = ctk.CTkFrame(tab, fg_color="transparent")
+        self.input_card.pack(fill="x", padx=15, pady=5)
+
+        self.response_text = ctk.CTkTextbox(
+            self.input_card,
+            height=110,
+            font=ctk.CTkFont(size=14),
+            corner_radius=10
+        )
+        self.response_text.pack(fill="x", expand=True)
+
+        self.mic_btn = ctk.CTkButton(
+            self.input_card,
+            text="🔴 Tap to Record Answer",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="#D9534F",
+            hover_color="#C9302C",
+            height=45,
+            command=self.record_voice_answer
+        )
+
+        # Submit Button
+        self.submit_btn = ctk.CTkButton(
+            tab,
+            text="Submit My Answer",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            height=45,
+            command=self.run_agent_2_and_3
+        )
+        self.submit_btn.pack(pady=15)
+
+        # Recommendation Card (Initially Hidden)
+        self.activity_card = ctk.CTkFrame(tab, corner_radius=12, border_width=1, border_color=("#2E6F95", "#4A90E2"))
+        self.activity_label = ctk.CTkLabel(
+            self.activity_card,
+            text="",
+            font=ctk.CTkFont(size=15),
+            wraplength=800,
+            justify="left"
         )
         self.activity_label.pack(padx=20, pady=15)
 
+    # ----------------------------------------------- CAREGIVER DASHBOARD TAB --
     def _build_dashboard_tab(self):
-        frame = self.dashboard_tab
+        tab = self.dashboard_tab
 
-        header = tk.Frame(frame, bg=BG_COLOR)
-        header.pack(fill="x", pady=10, padx=10)
-        tk.Label(header, text="Caregiver Dashboard", font=("Helvetica", 18, "bold"),
-                 bg=BG_COLOR, fg=ACCENT_COLOR).pack(side="left")
-        tk.Button(header, text="Refresh", font=("Helvetica", 11), command=self.refresh_dashboard
-                  ).pack(side="right")
+        header = ctk.CTkFrame(tab, fg_color="transparent")
+        header.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(
+            header, text="Caregiver Dashboard", font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            header, text="Refresh", width=100, command=self.refresh_dashboard
+        ).pack(side="right")
+
+        # Treeview Container
+        tree_frame = ctk.CTkFrame(tab, corner_radius=10)
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         columns = ("timestamp", "question", "response", "sentiment", "engagement", "activity")
-        self.tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
-        
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
+
         headings = {
             "timestamp": "Date/Time", "question": "Question",
             "response": "Response", "sentiment": "Sentiment",
             "engagement": "Engagement", "activity": "Recommended Activity",
         }
         widths = {
-            "timestamp": 130, "question": 160, "response": 180,
+            "timestamp": 120, "question": 160, "response": 180,
             "sentiment": 90, "engagement": 90, "activity": 220,
         }
         for col in columns:
             self.tree.heading(col, text=headings[col])
             self.tree.column(col, width=widths[col], anchor="w")
 
-        vsb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+        
+        self.tree.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         vsb.pack(side="right", fill="y", pady=10)
+
+    # ----------------------------------------------------- EVENT HANDLERS --
+    def toggle_voice_mode(self):
+        if self.voice_mode.get():
+            self.response_text.pack_forget()
+            self.mic_btn.pack(fill="x", expand=True)
+            if self.current_question:
+                play_audio(self.current_question, self.selected_lang.get())
+        else:
+            self.mic_btn.pack_forget()
+            self.response_text.pack(fill="x", expand=True)
+
+    def record_voice_answer(self):
+        self.status_label.configure(text="Listening... Please speak now.")
+        self.mic_btn.configure(state="disabled", text="Recording...")
+
+        def worker():
+            text = record_audio(self.selected_lang.get())
+            self.after(0, self._on_record_done, text)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_record_done(self, text):
+        self.mic_btn.configure(state="normal", text="🔴 Tap to Record Answer")
+        if text:
+            self.response_text.delete("1.0", "end")
+            self.response_text.insert("1.0", text)
+            self.status_label.configure(text="Audio captured! Review or click submit when ready.")
+            if self.voice_mode.get():
+                self.response_text.pack(fill="x", expand=True, pady=(10, 0))
+        else:
+            self.status_label.configure(text="Could not hear you clearly. Please try again.")
 
     def refresh_dashboard(self):
         for row in self.tree.get_children():
@@ -140,45 +258,91 @@ class CogniCareApp:
                 rec["recommended_activity"] or "-",
             ))
 
-    def run_agent_1(self):
-        self.status_label.config(text="Thinking of a question for you...")
-        self.question_label.config(text="")
-        self.submit_btn.config(state="disabled")
+    def on_language_change(self, choice):
+        """Translates the current question instead of generating a new one."""
+        if not self.original_question:
+            self.run_agent_1()
+            return
+
+        self.status_label.configure(text=f"Translating to {choice}...")
+        self.submit_btn.configure(state="disabled")
+        self.refresh_q_btn.configure(state="disabled")
 
         def worker():
-            question = self.interviewer.generate_question()
-            self.root.after(0, self._on_agent_1_done, question)
+            # ALWAYS translate from the pristine anchor text
+            translated_q = translate_text(self.original_question, choice)
+            self.after(0, self._on_translation_done, translated_q, choice)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_translation_done(self, translated_q, target_lang):
+        self.current_question = translated_q
+        self.question_label.configure(text=translated_q)
+        self.status_label.configure(text="Please answer below:")
+        
+        self.submit_btn.configure(state="normal")
+        self.refresh_q_btn.configure(state="normal")
+
+        # If voice mode is on, read the newly translated question aloud
+        if self.voice_mode.get():
+            self.response_text.pack_forget()
+            play_audio(translated_q, target_lang)
+
+    def run_agent_1(self):
+        self.status_label.configure(text="Thinking of a question for you...")
+        self.question_label.configure(text="")
+        self.submit_btn.configure(state="disabled")
+        self.refresh_q_btn.configure(state="disabled")
+
+        def worker():
+            question = self.interviewer.generate_question(language=self.selected_lang.get())
+            self.after(0, self._on_agent_1_done, question)
 
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_agent_1_done(self, question):
+        self.original_question = question
         self.current_question = question
-        self.question_label.config(text=question)
-        self.status_label.config(text="Please type your answer below:")
-        self.submit_btn.config(state="normal", text="Submit My Answer")
-        self.response_text.config(state="normal")
-        self.activity_frame.pack_forget()
+        self.question_label.configure(text=question)
+        self.status_label.configure(text="Please answer below:")
+
+        self.submit_btn.configure(state="normal", text="Submit My Answer")
+        self.refresh_q_btn.configure(state="normal")
+        self.response_text.configure(state="normal")
+        self.response_text.delete("1.0", "end")
+        self.activity_card.pack_forget()
+
+        if self.voice_mode.get():
+            self.response_text.pack_forget()
+            play_audio(question, self.selected_lang.get())
 
     def run_agent_2_and_3(self):
         user_text = self.response_text.get("1.0", "end").strip()
         if not user_text:
-            messagebox.showinfo("CogniCare AI", "Please type an answer first.")
+            messagebox.showinfo("CogniCare AI", "Please provide an answer first.")
             return
 
-        self.submit_btn.config(state="disabled")
-        self.status_label.config(text="Analyzing your response...")
-        self.activity_frame.pack_forget()
+        self.submit_btn.configure(state="disabled")
+        self.refresh_q_btn.configure(state="disabled")
+        self.status_label.configure(text="Analyzing your response...")
+        self.activity_card.pack_forget()
 
         self.current_conversation_id = log_conversation(
             self.user_id, self.current_question, user_text
         )
 
         def worker():
-            evaluation = self.evaluator.analyze(user_text)
-            self.root.after(0, self.status_label.config,
-                             {"text": "Preparing a personalized activity..."})
+            eval_text = translate_to_english(user_text, self.selected_lang.get())
+            evaluation = self.evaluator.analyze(eval_text)
 
-            activity = self.coordinator.generate_activity(user_text, evaluation)
+            self.after(0, self.status_label.configure, {"text": "Preparing a personalized activity..."})
+
+            # Pass the selected language to Agent 3
+            activity = self.coordinator.generate_activity(
+                user_text, 
+                evaluation, 
+                language=self.selected_lang.get()
+            )
 
             log_insight(
                 self.current_conversation_id,
@@ -187,20 +351,22 @@ class CogniCareApp:
                 activity,
             )
 
-            self.root.after(0, self._on_pipeline_done, evaluation, activity)
+            self.after(0, self._on_pipeline_done, evaluation, activity)
 
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_pipeline_done(self, evaluation, activity):
-        self.status_label.config(
+        self.status_label.configure(
             text=f"Detected mood: {evaluation['sentiment_label']}  |  "
                  f"Engagement: {evaluation['engagement_level']}"
         )
-        self.activity_label.config(text=f"Today's suggested activity:\n\n{activity}")
-        self.activity_frame.pack(pady=15, padx=20, fill="x")
+        self.activity_label.configure(text=f"Today's suggested activity:\n\n{activity}")
+        self.activity_card.pack(fill="x", padx=15, pady=15)
 
-        # Disable response text box and update button state to end single check-in loop
-        self.response_text.config(state="disabled")
-        self.submit_btn.config(state="disabled", text="Check-In Completed")
-        
+        self.response_text.configure(state="disabled")
+        self.submit_btn.configure(state="disabled", text="Check-In Completed")
+
         self.refresh_dashboard()
+
+        if self.voice_mode.get():
+            play_audio(activity, self.selected_lang.get())
