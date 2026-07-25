@@ -1,0 +1,20 @@
+# Environments
+.venv/
+env/
+venv/
+
+# API Keys and Secrets
+.env
+
+# Database
+*.db
+*.sqlite3
+cognicare.db
+
+# Python Caches
+__pycache__/
+*.pyc
+
+# OS generated files
+.DS_Store
+Thumbs.db
