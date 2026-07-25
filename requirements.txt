@@ -1,4 +1,17 @@
+# AI and Machine Learning (Agent 2)
 transformers>=4.40.0
 torch>=2.1.0
-requests>=2.31.0
 sentencepiece>=0.1.99
+requests>=2.31.0
+
+# User Interface
+customtkinter>=5.2.2
+
+# Voice and Audio Features
+SpeechRecognition>=3.10.1
+gTTS>=2.5.1
+pygame>=2.5.2
+PyAudio>=0.2.14
+
+# Environment Configuration
+python-dotenv>=1.0.1

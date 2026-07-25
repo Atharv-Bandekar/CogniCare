@@ -1,6 +1,7 @@
 import sqlite3
 import datetime
 from src.config import DB_PATH, DEMO_USER_NAME
+import json
 
 
 def get_connection():
@@ -89,13 +90,19 @@ def log_insight(conversation_id, sentiment_label, sentiment_score,
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        """INSERT INTO agent_insights
-           (conversation_id, sentiment_label, sentiment_score,
-            engagement_level, engagement_score, recommended_activity, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (conversation_id, sentiment_label, sentiment_score, engagement_level,
-         engagement_score, recommended_activity, datetime.datetime.now().isoformat()),
-    )
+            """INSERT INTO agent_insights 
+               (conversation_id, sentiment_label, sentiment_score, engagement_level, engagement_score, recommended_activity, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                conversation_id, 
+                sentiment_label, 
+                sentiment_score, 
+                engagement_level, 
+                engagement_score, 
+                json.dumps(recommended_activity), # <--- THIS IS THE FIX
+                datetime.datetime.now().isoformat()
+            ),
+        )
     conn.commit()
     conn.close()
 
