@@ -1,5 +1,12 @@
+import os
+from dotenv import load_dotenv
+
+# 1. Load the environment variables FIRST
+load_dotenv()
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import threading
 
@@ -29,6 +36,15 @@ app = FastAPI(
     description="Multi-Agent Backend for Cognitive Engagement",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# --- Add this CORS block right after initializing the app ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"], # Allows your Next.js app to connect
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Pydantic Models for Data Validation ---
@@ -95,4 +111,6 @@ async def analyze_response(req: AnalyzeRequest):
             "activity_plan": activity
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # <--- This will print the exact error to your terminal!
         raise HTTPException(status_code=500, detail=str(e))
