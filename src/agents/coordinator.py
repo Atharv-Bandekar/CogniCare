@@ -1,5 +1,22 @@
 import json
+import re
 from .base import call_llm
+
+def extract_json_safely(llm_response: str) -> dict:
+    """Strips markdown and conversational text to cleanly parse JSON."""
+    try:
+        # Find everything between the first { and the last }
+        match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+        if match:
+            clean_text = match.group(0)
+            return json.loads(clean_text)
+        
+        # Fallback if the regex somehow misses, try parsing the raw string
+        return json.loads(llm_response)
+        
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse LLM output. Raw text was:\n{llm_response}")
+        return None # Return None so the caller knows to use the fallback
 
 class CoordinatorAgent:
     # 1. Update fallbacks to match the new JSON structure so the app doesn't crash if the API fails
@@ -51,19 +68,15 @@ class CoordinatorAgent:
         )
 
         # 4. Increase max_tokens because a JSON object takes more words than a single sentence
-        result = call_llm(system_prompt, user_prompt, max_tokens=350)
+        result = call_llm(system_prompt, user_prompt, max_tokens=1024)
         
         if result:
-            try:
-                # 5. Clean up any accidental markdown (like ```json ) the LLM might sneak in
-                cleaned_result = result.strip().strip("```json").strip("```").strip()
-                # Parse string into a Python dictionary
-                return json.loads(cleaned_result)
-            except json.JSONDecodeError:
-                print("Error parsing JSON from LLM. Falling back to default plan.")
-                pass
+            # 5. Use the bulletproof regex extractor
+            activity_plan = extract_json_safely(result)
+            if activity_plan:
+                return activity_plan
 
-        # Return the structured fallback if the LLM fails or times out
+        # Return the structured fallback if the LLM fails, times out, or fails to parse
         return self.FALLBACK_ACTIVITIES.get(
             evaluation["sentiment_label"], self.FALLBACK_ACTIVITIES["Neutral"]
         )
