@@ -139,7 +139,7 @@ class CogniCareApp(ctk.CTk):
             font=ctk.CTkFont(size=14),
             corner_radius=10
         )
-        self.response_text.pack(fill="x", expand=True)
+        self.response_text.pack(fill="x", expand=True, padx=10, pady=10)
 
         self.mic_btn = ctk.CTkButton(
             self.input_card,
@@ -163,14 +163,16 @@ class CogniCareApp(ctk.CTk):
 
         # Recommendation Card (Initially Hidden)
         self.activity_card = ctk.CTkFrame(tab, corner_radius=12, border_width=1, border_color=("#2E6F95", "#4A90E2"))
-        self.activity_label = ctk.CTkLabel(
+        
+        # Swapped CTkLabel for a scrolling CTkTextbox
+        self.activity_text = ctk.CTkTextbox(
             self.activity_card,
-            text="",
             font=ctk.CTkFont(size=15),
-            wraplength=800,
-            justify="left"
+            height=200,          # Gives it a nice tall height
+            wrap="word",         # Wraps text at the edge of the box
+            fg_color="transparent" # Blends in with the background
         )
-        self.activity_label.pack(padx=20, pady=15)
+        self.activity_text.pack(fill="both", expand=True, padx=15, pady=15)
 
     # ----------------------------------------------- CAREGIVER DASHBOARD TAB --
     def _build_dashboard_tab(self):
@@ -277,7 +279,7 @@ class CogniCareApp(ctk.CTk):
 
     def _on_translation_done(self, translated_q, target_lang):
         self.current_question = translated_q
-        self.question_label.configure(text=translated_q)
+        self.question_label.configure(text=f"\n{translated_q}\n")
         self.status_label.configure(text="Please answer below:")
         
         self.submit_btn.configure(state="normal")
@@ -295,15 +297,26 @@ class CogniCareApp(ctk.CTk):
         self.refresh_q_btn.configure(state="disabled")
 
         def worker():
-            question = self.interviewer.generate_question(language=self.selected_lang.get())
+            # 1. Fetch the history from SQLite
+            history = fetch_history()
+            
+            # 2. Extract just the question strings into a list
+            past_questions = [rec["question"] for rec in history] if history else []
+            
+            # 3. Pass that list to the agent
+            question = self.interviewer.generate_question(
+                language=self.selected_lang.get(), 
+                past_questions=past_questions
+            )
+            
             self.after(0, self._on_agent_1_done, question)
-
+            
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_agent_1_done(self, question):
         self.original_question = question
         self.current_question = question
-        self.question_label.configure(text=question)
+        self.question_label.configure(text=f"\n{question}\n")
         self.status_label.configure(text="Please answer below:")
 
         self.submit_btn.configure(state="normal", text="Submit My Answer")
@@ -360,13 +373,41 @@ class CogniCareApp(ctk.CTk):
             text=f"Detected mood: {evaluation['sentiment_label']}  |  "
                  f"Engagement: {evaluation['engagement_level']}"
         )
-        self.activity_label.configure(text=f"Today's suggested activity:\n\n{activity}")
+        
+        # 1. Format the JSON into readable text
+        if isinstance(activity, dict):
+            display_text = (
+                f"🌅 Morning: {activity.get('morning_activity', '')}\n\n"
+                f"☀️ Afternoon: {activity.get('afternoon_activity', '')}\n\n"
+                f"🌙 Evening: {activity.get('evening_activity', '')}\n\n"
+                f"💡 Caregiver Note: {activity.get('caregiver_rationale', '')}"
+            )
+            # Create a natural-sounding script for the Voice Mode (excluding the rationale)
+            audio_text = (
+                f"Here is a wonderful plan for you today. "
+                f"For the morning: {activity.get('morning_activity', '')}. "
+                f"In the afternoon: {activity.get('afternoon_activity', '')}. "
+                f"And for the evening: {activity.get('evening_activity', '')}."
+            )
+        else:
+            # Fallback just in case the LLM returned a raw string
+            display_text = str(activity)
+            audio_text = str(activity)
+
+        # 2.  UI
         self.activity_card.pack(fill="x", padx=15, pady=15)
+        
+        #  
+        self.activity_text.configure(state="normal")
+        self.activity_text.delete("1.0", "end")
+        self.activity_text.insert("1.0", f"Today's suggested activity plan:\n\n{display_text}")
+        self.activity_text.configure(state="disabled")
 
         self.response_text.configure(state="disabled")
         self.submit_btn.configure(state="disabled", text="Check-In Completed")
 
         self.refresh_dashboard()
 
+        # 3. natural audio script 
         if self.voice_mode.get():
-            play_audio(activity, self.selected_lang.get())
+            play_audio(audio_text, self.selected_lang.get())
