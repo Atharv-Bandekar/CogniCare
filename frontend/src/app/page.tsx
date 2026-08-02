@@ -57,7 +57,7 @@ export default function Home() {
     setUserResponse("");
     
     try {
-      const res = await fetch("http://localhost:8000/api/question", {
+      const res = await fetch("https://cognicare-backend-o760.onrender.com/api/question", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language }),
@@ -118,7 +118,7 @@ export default function Home() {
     formData.append("audio", blob, "recording.webm");
 
     try {
-      const res = await fetch("http://localhost:8000/api/transcribe", {
+      const res = await fetch("https://cognicare-backend-o760.onrender.com/api/transcribe", {
         method: "POST",
         body: formData,
       });
@@ -141,7 +141,7 @@ export default function Home() {
     setStatus("Analyzing your response...");
     
     try {
-      const res = await fetch("http://localhost:8000/api/analyze", {
+      const res = await fetch("https://cognicare-backend-o760.onrender.com/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language, question, user_response: userResponse }),
