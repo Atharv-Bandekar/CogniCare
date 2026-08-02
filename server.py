@@ -42,7 +42,7 @@ app = FastAPI(
 # --- Add this CORS block right after initializing the app ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://cogni-care-six.vercel.app/"], # Allows your Next.js app to connect
+    allow_origins=["*"], # Allows your Next.js app to connect
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
