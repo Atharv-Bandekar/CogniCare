@@ -36,7 +36,7 @@ class InterviewerAgent:
         
         user_prompt = "Generate today's question."
 
-        result = call_llm(system_prompt, user_prompt, max_tokens=100)
+        result = call_llm(system_prompt, user_prompt, max_tokens=250)
         
         if result:
             return result.strip().strip('"')

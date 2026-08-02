@@ -1,123 +1,79 @@
-import sqlite3
-import datetime
-from src.config import DB_PATH, DEMO_USER_NAME
-import json
+import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
+load_dotenv()
 
-def get_connection():
-    """Each thread gets its own SQLite connection to prevent race conditions."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+# Initialize Supabase Client
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
 
+# Hardcoded demo user ID matching the one we inserted via SQL
+DEMO_USER_ID = "d0d99042-3a31-482f-87d4-839f8d169d01"
 
 def init_db():
-    """Initializes tables and ensures the default demo user exists."""
-    conn = get_connection()
-    cur = conn.cursor()
+    """
+    In the cloud model, schemas are managed in the Supabase dashboard.
+    We just use this to verify the connection.
+    """
+    try:
+        # Simple ping to ensure credentials work
+        supabase.table("users").select("id").limit(1).execute()
+        print("✅ Successfully connected to Supabase PostgreSQL!")
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
+def get_demo_user_id() -> str:
+    return DEMO_USER_ID
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS conversations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            timestamp TEXT NOT NULL,
-            question TEXT NOT NULL,
-            response TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    """)
+def log_conversation(user_id: str, question: str, response: str) -> str:
+    """Logs the raw question and response, returning the new conversation ID."""
+    data = {
+        "user_id": user_id,
+        "question": question,
+        "response": response
+    }
+    result = supabase.table("conversations").insert(data).execute()
+    return result.data[0]["id"]
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS agent_insights (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conversation_id INTEGER NOT NULL,
-            sentiment_label TEXT,
-            sentiment_score REAL,
-            engagement_level TEXT,
-            engagement_score REAL,
-            recommended_activity TEXT,
-            timestamp TEXT NOT NULL,
-            FOREIGN KEY (conversation_id) REFERENCES conversations (id)
-        )
-    """)
+def log_insight(conversation_id: str, sentiment_label: str, sentiment_score: float, 
+                engagement_level: str, engagement_score: float, recommended_activity: str):
+    """Logs the analysis from Agents 2 and 3."""
+    # Convert activity to string if it's a dict
+    activity_str = str(recommended_activity) if isinstance(recommended_activity, dict) else recommended_activity
+    
+    data = {
+        "conversation_id": conversation_id,
+        "sentiment_label": sentiment_label,
+        "sentiment_score": float(sentiment_score),
+        "engagement_level": engagement_level,
+        "engagement_score": float(engagement_score),
+        "recommended_activity": activity_str
+    }
+    supabase.table("insights").insert(data).execute()
 
-    conn.commit()
-
-    cur.execute("SELECT id FROM users WHERE name = ?", (DEMO_USER_NAME,))
-    row = cur.fetchone()
-    if row is None:
-        cur.execute(
-            "INSERT INTO users (name, created_at) VALUES (?, ?)",
-            (DEMO_USER_NAME, datetime.datetime.now().isoformat()),
-        )
-        conn.commit()
-
-    conn.close()
-
-
-def get_demo_user_id():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM users WHERE name = ?", (DEMO_USER_NAME,))
-    row = cur.fetchone()
-    conn.close()
-    return row["id"] if row else None
-
-
-def log_conversation(user_id, question, response):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO conversations (user_id, timestamp, question, response) VALUES (?, ?, ?, ?)",
-        (user_id, datetime.datetime.now().isoformat(), question, response),
-    )
-    conn.commit()
-    conversation_id = cur.lastrowid
-    conn.close()
-    return conversation_id
-
-
-def log_insight(conversation_id, sentiment_label, sentiment_score,
-                engagement_level, engagement_score, recommended_activity):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-            """INSERT INTO agent_insights 
-               (conversation_id, sentiment_label, sentiment_score, engagement_level, engagement_score, recommended_activity, timestamp)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                conversation_id, 
-                sentiment_label, 
-                sentiment_score, 
-                engagement_level, 
-                engagement_score, 
-                json.dumps(recommended_activity), # <--- THIS IS THE FIX
-                datetime.datetime.now().isoformat()
-            ),
-        )
-    conn.commit()
-    conn.close()
-
-
-def fetch_history():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT c.timestamp, c.question, c.response,
-               i.sentiment_label, i.sentiment_score,
-               i.engagement_level, i.recommended_activity
-        FROM conversations c
-        LEFT JOIN agent_insights i ON i.conversation_id = c.id
-        ORDER BY c.id DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+def fetch_history(user_id: str = DEMO_USER_ID) -> list:
+    """
+    Fetches the joined history of conversations and insights for the Caregiver Dashboard.
+    """
+    # Supabase allows joining tables using the foreign key relationship
+    response = supabase.table("conversations") \
+        .select("timestamp, question, response, insights(sentiment_label, engagement_level, recommended_activity)") \
+        .eq("user_id", user_id) \
+        .order("timestamp", desc=True) \
+        .execute()
+    
+    # Flatten the data to match the UI's expected dictionary format
+    formatted_history = []
+    for row in response.data:
+        insight = row.get("insights", [{}])[0] if row.get("insights") else {}
+        formatted_history.append({
+            "timestamp": row["timestamp"],
+            "question": row["question"],
+            "response": row["response"],
+            "sentiment_label": insight.get("sentiment_label"),
+            "engagement_level": insight.get("engagement_level"),
+            "recommended_activity": insight.get("recommended_activity")
+        })
+    return formatted_history
