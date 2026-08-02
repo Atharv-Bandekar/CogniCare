@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from groq import Groq
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import threading
@@ -113,4 +114,36 @@ async def analyze_response(req: AnalyzeRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()  # <--- This will print the exact error to your terminal!
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/transcribe")
+async def transcribe_audio(audio: UploadFile = File(...)):
+    """Receives an audio blob from the browser and transcribes it using Groq."""
+    try:
+        # Save the uploaded file temporarily
+        temp_file_path = f"temp_{audio.filename}"
+        with open(temp_file_path, "wb") as f:
+            f.write(await audio.read())
+            
+        # Initialize Groq client
+        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        
+        # Open the temp file and send to Groq Whisper
+        with open(temp_file_path, "rb") as file:
+            transcription = client.audio.transcriptions.create(
+              file=(temp_file_path, file.read()),
+              model="whisper-large-v3",
+              prompt="The user is answering a question. Might contain Hindi, Marathi, Tamil, or English.",
+              response_format="json",
+            )
+            
+        # Clean up the temp file
+        os.remove(temp_file_path)
+        
+        return {"text": transcription.text}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
