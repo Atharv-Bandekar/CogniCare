@@ -127,7 +127,7 @@ python main.py
 
 ## Team
 
-Built by [Your Name] and [Teammate Name] as part of the AICTE | IBM SkillsBuild AI Automation & Intelligent Solutions Internship, in partnership with BharatCares.
+Built by Shubham Govekar and Atharv Bandekar as part of the AICTE | IBM SkillsBuild AI Automation & Intelligent Solutions Internship, in partnership with BharatCares.
 
 ---
 
