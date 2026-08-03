@@ -2,6 +2,46 @@
 
 import { useState, useEffect, useRef } from "react";
 
+// Translation Dictionary
+const uiTranslations: Record<string, any> = {
+  English: {
+    checkInTab: "Daily Check-In",
+    dashboardTab: "Caregiver Dashboard",
+    generateBtn: "Generate Today's Question",
+    speakBtn: "🎤 Speak Answer",
+    stopBtn: "⏹ Stop Recording",
+    submitBtn: "Submit Answer",
+    loading: "Processing...",
+  },
+  Hindi: {
+    checkInTab: "दैनिक चेक-इन",
+    dashboardTab: "देखभालकर्ता डैशबोर्ड",
+    generateBtn: "आज का प्रश्न प्राप्त करें",
+    speakBtn: "🎤 उत्तर बोलें",
+    stopBtn: "⏹ रिकॉर्डिंग रोकें",
+    submitBtn: "उत्तर सबमिट करें",
+    loading: "प्रोसेस हो रहा है...",
+  },
+  Marathi: {
+    checkInTab: "दैनंदिन चेक-इन",
+    dashboardTab: "केअरगिव्हर डॅशबोर्ड",
+    generateBtn: "आजचा प्रश्न मिळवा",
+    speakBtn: "🎤 उत्तर बोला",
+    stopBtn: "⏹ रेकॉर्डिंग थांबवा",
+    submitBtn: "उत्तर पाठवा",
+    loading: "प्रक्रिया सुरू आहे...",
+  },
+  Tamil: {
+    checkInTab: "தினசரி சரிபார்ப்பு",
+    dashboardTab: "பராமரிப்பாளர் டாஷ்போர்டு",
+    generateBtn: "இன்றைய கேள்வியை உருவாக்கு",
+    speakBtn: "🎤 பதிலை பேசு",
+    stopBtn: "⏹ பதிவை நிறுத்து",
+    submitBtn: "பதிலைச் சமர்ப்பி",
+    loading: "செயலாக்கப்படுகிறது...",
+  }
+};
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState("checkin");
   const [language, setLanguage] = useState("English");
@@ -144,8 +184,6 @@ export default function Home() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/history`);
       const data = await res.json();
-
-      console.log("RAW DATABASE DATA:", data.history);
       setHistory(data.history || []);
     } catch (error) {
       console.error("Failed to load history", error);
@@ -159,6 +197,9 @@ export default function Home() {
       loadHistory();
     }
   }, [activeTab]);
+
+  // Grab the current language translations for easy usage
+  const t = uiTranslations[language] || uiTranslations["English"];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-8 font-sans">
@@ -182,16 +223,16 @@ export default function Home() {
         {/* Navigation Tabs */}
         <div className="flex space-x-4 border-b border-slate-800 mb-8">
           <button 
-            className={`pb-2 px-4 ${activeTab === "checkin" ? "border-b-2 border-blue-500 text-blue-400" : "text-slate-400"}`}
+            className={`pb-2 px-4 whitespace-nowrap transition-colors ${activeTab === "checkin" ? "border-b-2 border-blue-500 text-blue-400" : "text-slate-400"}`}
             onClick={() => setActiveTab("checkin")}
           >
-            Daily Check-In
+            {t.checkInTab}
           </button>
           <button 
-            className={`pb-2 px-4 ${activeTab === "dashboard" ? "border-b-2 border-blue-500 text-blue-400" : "text-slate-400"}`}
+            className={`pb-2 px-4 whitespace-nowrap transition-colors ${activeTab === "dashboard" ? "border-b-2 border-blue-500 text-blue-400" : "text-slate-400"}`}
             onClick={() => setActiveTab("dashboard")}
           >
-            Caregiver Dashboard
+            {t.dashboardTab}
           </button>
         </div>
 
@@ -207,9 +248,9 @@ export default function Home() {
                 <button 
                   onClick={fetchQuestion}
                   disabled={isLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-medium transition-colors break-words min-h-[64px]"
                 >
-                  Generate Today's Question
+                  {t.generateBtn}
                 </button>
               )}
             </div>
@@ -223,20 +264,21 @@ export default function Home() {
                   onChange={(e) => setUserResponse(e.target.value)}
                 />
                 
-                <div className="flex space-x-4">
+                {/* Armored Button Container */}
+                <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
-                    className={`flex-1 ${isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-800 hover:bg-slate-700 border border-slate-600'} text-white px-6 py-4 rounded-xl font-bold text-lg transition-colors flex items-center justify-center`}
+                    className={`flex-1 ${isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-800 hover:bg-slate-700 border border-slate-600'} text-white px-6 py-4 rounded-xl font-bold text-lg transition-colors flex items-center justify-center break-words min-h-[64px] leading-tight`}
                   >
-                    {isRecording ? "⏹ Stop Recording" : "🎤 Speak Answer"}
+                    {isRecording ? t.stopBtn : t.speakBtn}
                   </button>
 
                   <button 
                     onClick={submitAnswer}
                     disabled={isLoading || isRecording}
-                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-4 rounded-xl font-bold text-lg transition-colors"
+                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-4 rounded-xl font-bold text-lg transition-colors break-words min-h-[64px] leading-tight flex items-center justify-center"
                   >
-                    {isLoading && !isRecording ? "Processing..." : "Submit Answer"}
+                    {isLoading && !isRecording ? t.loading : t.submitBtn}
                   </button>
                 </div>
               </div>
@@ -281,12 +323,10 @@ export default function Home() {
                     {/* Timestamp & Mood Badge */}
                     <div className="flex justify-between items-start mb-4 border-b border-slate-800 pb-4">
                       <span className="text-slate-400 text-sm">
-                        {/* CHANGED: created_at -> timestamp */}
                         {new Date(entry.timestamp).toLocaleString()}
                       </span>
                       <div className="flex space-x-2">
                         <span className="bg-slate-800 text-slate-300 px-3 py-1 rounded-full text-sm border border-slate-700">
-                          {/* CHANGED: mood_label -> sentiment_label */}
                           Mood: {entry.sentiment_label || "Unknown"}
                         </span>
                         <span className="bg-slate-800 text-slate-300 px-3 py-1 rounded-full text-sm border border-slate-700">
@@ -303,7 +343,6 @@ export default function Home() {
                       </div>
                       <div>
                         <strong className="text-green-400 block text-sm mb-1">User Answer:</strong>
-                        {/* CHANGED: user_response -> response */}
                         <p className="text-slate-300 italic">"{entry.response}"</p>
                       </div>
                     </div>
