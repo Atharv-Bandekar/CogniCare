@@ -147,3 +147,16 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/history")
+async def get_history():
+    """Fetches the entire conversation and insight history for the dashboard."""
+    try:
+        user_id = get_demo_user_id()
+        history_data = fetch_history(user_id)
+        return {"history": history_data}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

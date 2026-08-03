@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("checkin");
@@ -11,8 +11,11 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [activityPlan, setActivityPlan] = useState<any>(null);
   const [isRecording, setIsRecording] = useState(false);
+  
+  // New state for the dashboard history
+  const [history, setHistory] = useState<any[]>([]);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
 
-  // Refs for Audio Recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
 
@@ -20,36 +23,23 @@ export default function Home() {
   const renderActivity = (activity: any) => {
     if (!activity) return "No activity suggested.";
     if (typeof activity === "string") return activity;
-    
-    // If the LLM returns a nested object (like {title, description, duration})
     if (typeof activity === "object") {
       const title = activity.title ? `**${activity.title}**: ` : "";
       const desc = activity.description || "";
       const dur = activity.duration ? ` (${activity.duration})` : "";
       return `${title}${desc}${dur}`;
     }
-    
-    return JSON.stringify(activity); // Ultimate fallback
+    return JSON.stringify(activity);
   };
 
-  // --- Text-to-Speech (Browser Native) ---
   const speakText = (text: string, lang: string) => {
     if (!("speechSynthesis" in window)) return;
-    
-    // Map dropdown languages to browser locales
-    const locales: Record<string, string> = {
-      English: "en-US",
-      Hindi: "hi-IN",
-      Marathi: "mr-IN",
-      Tamil: "ta-IN"
-    };
-
+    const locales: Record<string, string> = { English: "en-US", Hindi: "hi-IN", Marathi: "mr-IN", Tamil: "ta-IN" };
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = locales[lang] || "en-US";
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- Agent 1: Fetch Question ---
   const fetchQuestion = async () => {
     setIsLoading(true);
     setStatus("Thinking of a question for you...");
@@ -57,7 +47,7 @@ export default function Home() {
     setUserResponse("");
     
     try {
-      const res = await fetch("https://cognicare-backend-o760.onrender.com/api/question", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/question`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language }),
@@ -65,8 +55,6 @@ export default function Home() {
       const data = await res.json();
       setQuestion(data.question);
       setStatus("Please answer below:");
-      
-      // Read the question out loud!
       speakText(data.question, language);
     } catch (error) {
       setStatus("Error connecting to backend.");
@@ -74,7 +62,6 @@ export default function Home() {
     setIsLoading(false);
   };
 
-  // --- Microphone Recording Logic ---
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -83,15 +70,12 @@ export default function Home() {
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         await uploadAudioForTranscription(audioBlob);
-        // Stop the microphone tracks to turn off the red recording dot in the browser tab
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -118,7 +102,7 @@ export default function Home() {
     formData.append("audio", blob, "recording.webm");
 
     try {
-      const res = await fetch("https://cognicare-backend-o760.onrender.com/api/transcribe", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/transcribe`, {
         method: "POST",
         body: formData,
       });
@@ -133,15 +117,13 @@ export default function Home() {
     setIsLoading(false);
   };
 
-  // --- Agents 2 & 3: Submit Answer ---
   const submitAnswer = async () => {
     if (!userResponse) return alert("Please provide an answer first.");
-    
     setIsLoading(true);
     setStatus("Analyzing your response...");
     
     try {
-      const res = await fetch("https://cognicare-backend-o760.onrender.com/api/analyze", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language, question, user_response: userResponse }),
@@ -149,14 +131,34 @@ export default function Home() {
       const data = await res.json();
       setActivityPlan(data.activity_plan);
       setStatus(`Detected mood: ${data.evaluation.sentiment_label} | Engagement: ${data.evaluation.engagement_level}`);
-      
-      // Read a quick summary out loud
       speakText("I have created a personalized activity plan for you. Check the screen for details.", language);
     } catch (error) {
       setStatus("Error analyzing response.");
     }
     setIsLoading(false);
   };
+
+  // --- Fetch History Logic ---
+  const loadHistory = async () => {
+    setIsFetchingHistory(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/history`);
+      const data = await res.json();
+
+      console.log("RAW DATABASE DATA:", data.history);
+      setHistory(data.history || []);
+    } catch (error) {
+      console.error("Failed to load history", error);
+    }
+    setIsFetchingHistory(false);
+  };
+
+  // Automatically fetch history when the Dashboard tab is clicked
+  useEffect(() => {
+    if (activeTab === "dashboard") {
+      loadHistory();
+    }
+  }, [activeTab]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-8 font-sans">
@@ -193,12 +195,11 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Main Content Area */}
+        {/* Check-in Tab */}
         {activeTab === "checkin" && (
           <div className="space-y-6">
             <p className="text-slate-400 italic">{status}</p>
 
-            {/* Question Card */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center shadow-lg">
               {question ? (
                 <h2 className="text-2xl font-semibold leading-relaxed">{question}</h2>
@@ -213,7 +214,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Input Area */}
             {question && !activityPlan && (
               <div className="space-y-4">
                 <textarea 
@@ -224,7 +224,6 @@ export default function Home() {
                 />
                 
                 <div className="flex space-x-4">
-                  {/* Microphone Button */}
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
                     className={`flex-1 ${isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-800 hover:bg-slate-700 border border-slate-600'} text-white px-6 py-4 rounded-xl font-bold text-lg transition-colors flex items-center justify-center`}
@@ -232,7 +231,6 @@ export default function Home() {
                     {isRecording ? "⏹ Stop Recording" : "🎤 Speak Answer"}
                   </button>
 
-                  {/* Submit Button */}
                   <button 
                     onClick={submitAnswer}
                     disabled={isLoading || isRecording}
@@ -244,7 +242,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Results / Activity Plan */}
             {activityPlan && (
               <div className="bg-slate-800 border border-blue-500/30 rounded-xl p-6 mt-6 shadow-xl">
                 <h3 className="text-xl font-bold mb-4 text-blue-300">Recommended Activities for Today:</h3>
@@ -267,9 +264,54 @@ export default function Home() {
 
         {/* Dashboard Tab */}
         {activeTab === "dashboard" && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
-            <h2 className="text-xl text-slate-300 mb-2">Caregiver Dashboard</h2>
-            <p className="text-slate-500">History will populate here from Supabase.</p>
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-blue-300 mb-4">Patient History & Trends</h2>
+            
+            {isFetchingHistory ? (
+              <p className="text-slate-400">Loading history from database...</p>
+            ) : history.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
+                <p className="text-slate-500">No interaction history found yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {history.map((entry, index) => (
+                  <div key={index} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg">
+                    
+                    {/* Timestamp & Mood Badge */}
+                    <div className="flex justify-between items-start mb-4 border-b border-slate-800 pb-4">
+                      <span className="text-slate-400 text-sm">
+                        {/* CHANGED: created_at -> timestamp */}
+                        {new Date(entry.timestamp).toLocaleString()}
+                      </span>
+                      <div className="flex space-x-2">
+                        <span className="bg-slate-800 text-slate-300 px-3 py-1 rounded-full text-sm border border-slate-700">
+                          {/* CHANGED: mood_label -> sentiment_label */}
+                          Mood: {entry.sentiment_label || "Unknown"}
+                        </span>
+                        <span className="bg-slate-800 text-slate-300 px-3 py-1 rounded-full text-sm border border-slate-700">
+                          Engagement: {entry.engagement_level || "Unknown"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Q & A */}
+                    <div className="space-y-3 mb-4">
+                      <div>
+                        <strong className="text-blue-400 block text-sm mb-1">AI Question:</strong>
+                        <p className="text-slate-200">{entry.question}</p>
+                      </div>
+                      <div>
+                        <strong className="text-green-400 block text-sm mb-1">User Answer:</strong>
+                        {/* CHANGED: user_response -> response */}
+                        <p className="text-slate-300 italic">"{entry.response}"</p>
+                      </div>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
