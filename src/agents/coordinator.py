@@ -67,13 +67,22 @@ class CoordinatorAgent:
             "Generate the JSON daily plan."
         )
 
-        # 4. Increase max_tokens because a JSON object takes more words than a single sentence
+        # 4. Give a massive token buffer to account for Devanagari/Tamil tokenization bloat
         result = call_llm(system_prompt, user_prompt, max_tokens=1024)
         
         if result:
-            # 5. Use the bulletproof regex extractor
             activity_plan = extract_json_safely(result)
             if activity_plan:
+                # --- NEW: SCHEMA VALIDATOR ---
+                expected_keys = ["morning_activity", "afternoon_activity", "evening_activity", "caregiver_rationale"]
+                
+                for key in expected_keys:
+                    if key not in activity_plan:
+                        # If the AI forgot a key, patch it with a safe default
+                        print(f"⚠️ Warning: LLM missed the '{key}' key. Patching with default.")
+                        activity_plan[key] = f"No specific {key.replace('_', ' ')} generated. Spend time resting or chatting with family."
+                # -----------------------------
+                
                 return activity_plan
 
         # Return the structured fallback if the LLM fails, times out, or fails to parse
