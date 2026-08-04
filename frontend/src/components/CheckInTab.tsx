@@ -1,11 +1,10 @@
-// frontend/src/components/CheckInTab.tsx
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
 /**
- * CheckInTab Component Props
- * @property {string} language - The currently selected language (e.g., "English", "Tamil")
- * @property {Record<string, string>} t - The active translation dictionary for UI elements
- * @property {any} session - The active Supabase user session token
+ * Interface defining the properties passed to the CheckInTab component.
+ * @property {string} language - The user's currently selected UI language.
+ * @property {Record<string, string>} t - Dictionary containing localized text strings.
+ * @property {any} session - The active Supabase authentication session object containing the JWT.
  */
 interface CheckInTabProps {
   language: string;
@@ -15,58 +14,116 @@ interface CheckInTabProps {
 
 /**
  * CheckInTab Component
- * * Manages the interactive daily assessment. Handles AI question generation,
- * microphone recording, audio transcription via Whisper, and displays the 
- * final personalized daily plan.
+ * * Handles the daily cognitive assessment workflow for the user.
+ * Includes logic to ensure the user is only asked one question per day,
+ * transitioning to a persistent daily itinerary view upon completion.
  */
 export default function CheckInTab({ language, t, session }: CheckInTabProps) {
-  // --- State Management ---
-  const [question, setQuestion] = useState("");
-  const [userResponse, setUserResponse] = useState("");
-  const [status, setStatus] = useState("Click 'Get Question' to start.");
-  const [isLoading, setIsLoading] = useState(false);
+  // --- UI State Management ---
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [status, setStatus] = useState<string>("");
+  
+  // --- Assessment State ---
+  const [question, setQuestion] = useState<string>("");
+  const [userResponse, setUserResponse] = useState<string>("");
   const [activityPlan, setActivityPlan] = useState<any>(null);
-  const [isRecording, setIsRecording] = useState(false);
-
-  // --- Refs for Audio Recording ---
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-
-  /**
-   * Helper: Parses the AI's JSON output for the activity plan into readable text.
-   */
-  const renderActivity = (activity: any) => {
-    if (!activity) return "No activity suggested.";
-    if (typeof activity === "string") return activity;
-    if (typeof activity === "object") {
-      const title = activity.title ? `**${activity.title}**: ` : "";
-      const desc = activity.description || "";
-      const dur = activity.duration ? ` (${activity.duration})` : "";
-      return `${title}${desc}${dur}`;
-    }
-    return JSON.stringify(activity);
-  };
+  
+  // --- Workflow Control State ---
+  // Determines if the user has already completed their assessment for the current calendar day
+  const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(false);
+  // Prevents UI flashing by showing a loading state while querying the database on mount
+  const [isCheckingStatus, setIsCheckingStatus] = useState<boolean>(true);
 
   /**
-   * Helper: Triggers browser Text-to-Speech using the selected regional dialect.
+   * Synthesizes and plays text-to-speech audio for the provided string.
+   * Includes voice matching for regional languages with a safe fallback.
+   * @param {string} text - The content to be read aloud.
+   * @param {string} lang - The selected language (English, Hindi, Marathi, Tamil).
    */
   const speakText = (text: string, lang: string) => {
-    if (!("speechSynthesis" in window)) return;
-    const locales: Record<string, string> = { English: "en-US", Hindi: "hi-IN", Marathi: "mr-IN", Tamil: "ta-IN" };
+    if (!window.speechSynthesis) {
+      console.warn("Speech synthesis not supported in this browser.");
+      return;
+    }
+
+    // Cancel any ongoing speech utterances
+    window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = locales[lang] || "en-US";
+    
+    // Map application languages to BCP 47 tags
+    const langMap: Record<string, string> = {
+      "Hindi": "hi-IN",
+      "Marathi": "mr-IN",
+      "Tamil": "ta-IN",
+      "English": "en-US"
+    };
+    
+    const targetLangCode = langMap[lang] || "en-US";
+    utterance.lang = targetLangCode;
+
+    // Attempt to find a matching voice installed on the user's system
+    const voices = window.speechSynthesis.getVoices();
+    const matchingVoice = voices.find(voice => voice.lang === targetLangCode || voice.lang.startsWith(targetLangCode.split('-')[0]));
+    
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
+    } else {
+      console.warn(`No native voice found for ${targetLangCode}. Using default system voice.`);
+    }
+
     window.speechSynthesis.speak(utterance);
   };
 
   /**
-   * API Call: Asks the backend to generate a culturally relevant question.
+   * Initialization Hook: Validates the user's daily check-in status.
+   * Queries the backend for the most recent conversation history. 
+   * If the latest entry matches today's date, it bypasses the question flow
+   * and directly renders the user's activity plan.
+   */
+  useEffect(() => {
+    const checkTodayStatus = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/history`, {
+          headers: {
+            "Authorization": `Bearer ${session?.access_token}`
+          }
+        });
+        const data = await res.json();
+        
+        if (data.history && data.history.length > 0) {
+          const latestEntry = data.history[0];
+          
+          // Normalize dates to localized strings for accurate daily comparison
+          const latestDate = new Date(latestEntry.timestamp).toDateString();
+          const todayDate = new Date().toDateString();
+
+          if (latestDate === todayDate && latestEntry.activity_plan) {
+            setHasCheckedInToday(true);
+            setActivityPlan(latestEntry.activity_plan);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to verify today's check-in status:", error);
+      } finally {
+        setIsCheckingStatus(false);
+      }
+    };
+
+    // Only attempt to fetch history if a valid auth token is present
+    if (session?.access_token) {
+      checkTodayStatus();
+    }
+  }, [session]);
+
+
+  /**
+   * Triggers the backend AI Interviewer Agent to generate a localized question.
+   * Updates UI state and initiates TTS playback upon success.
    */
   const fetchQuestion = async () => {
     setIsLoading(true);
     setStatus("Thinking of a question for you...");
-    setActivityPlan(null);
-    setUserResponse("");
-    
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/question`, {
         method: "POST",
@@ -81,6 +138,7 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
       setStatus("Please answer below:");
       speakText(data.question, language);
     } catch (error) {
+      console.error("Question Generation Error:", error);
       setStatus("Error connecting to backend.");
     } finally {
       setIsLoading(false);
@@ -88,78 +146,14 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
   };
 
   /**
-   * Hardware: Requests microphone access and begins recording audio chunks.
-   */
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        await uploadAudioForTranscription(audioBlob);
-        stream.getTracks().forEach((track) => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setStatus("Recording... Click stop when finished.");
-    } catch (error) {
-      console.error("Error accessing mic:", error);
-      alert("Microphone access denied. Please allow mic permissions in your browser.");
-    }
-  };
-
-  /**
-   * Hardware: Halts the recording stream, triggering the `onstop` event to upload.
-   */
-  const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  /**
-   * API Call: Sends the raw WebM blob to the backend for Groq Whisper transcription.
-   */
-  const uploadAudioForTranscription = async (blob: Blob) => {
-    setIsLoading(true);
-    setStatus("Transcribing audio via Groq Whisper...");
-    const formData = new FormData();
-    formData.append("audio", blob, "recording.webm");
-
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/transcribe`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${session?.access_token}`
-        },
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.text) {
-        setUserResponse(data.text);
-        setStatus("Audio transcribed! You can edit the text or submit it.");
-      }
-    } catch (error) {
-      setStatus("Error transcribing audio.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * API Call: Submits the final text to the backend to generate the daily plan.
+   * Submits the user's response to the backend Evaluator and Coordinator agents.
+   * Upon successful evaluation, locks the UI into the Persistent Itinerary view.
    */
   const submitAnswer = async () => {
-    if (!userResponse) return alert("Please provide an answer first.");
+    if (!userResponse) {
+      return alert("Please provide an answer first.");
+    }
+
     setIsLoading(true);
     setStatus("Analyzing your response...");
     
@@ -172,82 +166,156 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
         },
         body: JSON.stringify({ language, question, user_response: userResponse }),
       });
+      
       const data = await res.json();
+      
+      // Update state to lock the daily workflow and display the plan
       setActivityPlan(data.activity_plan);
-      setStatus(`Detected mood: ${data.evaluation.sentiment_label} | Engagement: ${data.evaluation.engagement_level}`);
+      setHasCheckedInToday(true); 
+      setStatus("Done for today!");
+      
       speakText("I have created a personalized activity plan for you. Check the screen for details.", language);
     } catch (error) {
+      console.error("Response Analysis Error:", error);
       setStatus("Error analyzing response.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <p className="text-slate-400 italic">{status}</p>
 
-      {/* Question Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center shadow-lg">
-        {question ? (
-          <h2 className="text-2xl font-semibold leading-relaxed">{question}</h2>
-        ) : (
-          <button 
-            onClick={fetchQuestion}
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-medium transition-colors break-words min-h-[64px]"
-          >
-            {t.generateBtn}
-          </button>
-        )}
+  // ==========================================
+  // UI RENDERING LOGIC
+  // ==========================================
+
+  // 1. Loading State while querying Supabase for today's status
+  if (isCheckingStatus) {
+    return <div className="p-6 text-center text-gray-500">Loading your daily dashboard...</div>;
+  }
+
+  // 2. Persistent Daily Itinerary View (Triggered if already checked in today)
+  if (hasCheckedInToday && activityPlan) {
+    let parsedPlan = activityPlan;
+    if (typeof activityPlan === 'string') {
+      try { parsedPlan = JSON.parse(activityPlan); } 
+      catch (e) { /* Fallback */ }
+    }
+
+    const isObject = typeof parsedPlan === 'object' && parsedPlan !== null;
+
+    const textToRead = isObject 
+      ? `Here is your plan for today. 
+         Morning: ${parsedPlan.morning_activity || 'Rest and relax.'} 
+         Afternoon: ${parsedPlan.afternoon_activity || 'Rest and relax.'} 
+         Evening: ${parsedPlan.evening_activity || 'Rest and relax.'}`
+      : String(parsedPlan);
+
+    return (
+      <div className="p-6 max-w-2xl mx-auto space-y-6 animate-fade-in">
+        <div className="text-center space-y-2 mb-8">
+          <h2 className="text-4xl font-extrabold text-green-500">Great job today! 🎉</h2>
+          <p className="text-gray-500 text-xl">Here is your personalized plan.</p>
+        </div>
+
+        {/* Outer Wrapper: Removed bg-white! Added a subtle glass/transparent effect so your app's background shows through */}
+        <div className="shadow-lg rounded-2xl p-6 border border-gray-200/50 dark:border-gray-700/50 bg-gray-50/10 dark:bg-gray-800/20 backdrop-blur-sm space-y-6 text-left">
+          
+          {isObject ? (
+            <>
+              {/* Morning: Colorful border with a 10% transparent tint instead of solid white */}
+              {parsedPlan.morning_activity && (
+                <div className="bg-orange-500/10 border-l-4 border-orange-500 p-5 rounded-r-xl">
+                  <h4 className="font-bold text-orange-500 flex items-center gap-3 text-2xl mb-2">
+                    <span className="text-3xl">🌅</span> Morning
+                  </h4>
+                  {/* Added dark:text-gray-300 so it looks great if your app is in dark mode */}
+                  <p className="text-gray-800 dark:text-gray-200 text-xl leading-relaxed">{parsedPlan.morning_activity}</p>
+                </div>
+              )}
+              
+              {/* Afternoon: Blue border with 10% transparent blue tint */}
+              {parsedPlan.afternoon_activity && (
+                <div className="bg-blue-500/10 border-l-4 border-blue-500 p-5 rounded-r-xl">
+                  <h4 className="font-bold text-blue-500 flex items-center gap-3 text-2xl mb-2">
+                    <span className="text-3xl">☀️</span> Afternoon
+                  </h4>
+                  <p className="text-gray-800 dark:text-gray-200 text-xl leading-relaxed">{parsedPlan.afternoon_activity}</p>
+                </div>
+              )}
+
+              {/* Evening: Indigo border with 10% transparent indigo tint */}
+              {parsedPlan.evening_activity && (
+                <div className="bg-indigo-500/10 border-l-4 border-indigo-500 p-5 rounded-r-xl">
+                  <h4 className="font-bold text-indigo-500 flex items-center gap-3 text-2xl mb-2">
+                    <span className="text-3xl">🌙</span> Evening
+                  </h4>
+                  <p className="text-gray-800 dark:text-gray-200 text-xl leading-relaxed">{parsedPlan.evening_activity}</p>
+                </div>
+              )}
+
+              {/* Caregiver Note */}
+              {parsedPlan.caregiver_rationale && (
+                <div className="mt-8 pt-6 border-t border-gray-200/50 dark:border-gray-700/50">
+                  <h4 className="font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-2 text-lg mb-2">
+                    💡 Note for Family/Caregiver
+                  </h4>
+                  <p className="text-gray-500 dark:text-gray-400 italic text-base">{parsedPlan.caregiver_rationale}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-gray-800 dark:text-gray-200 text-xl leading-relaxed whitespace-pre-wrap bg-gray-500/10 p-5 rounded-xl border-l-4 border-gray-500">
+              {String(parsedPlan)}
+            </p>
+          )}
+        </div>
+
+        <button 
+          onClick={() => speakText(textToRead, language)}
+          className="w-full mt-6 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-2xl shadow-sm transition-all flex items-center justify-center gap-3"
+        >
+          🔊 Read My Plan Out Loud
+        </button>
+      </div>
+    );
+  }
+
+  // 3. Default Question View (Triggered if no check-in exists for today)
+  return (
+    <div className="p-4 space-y-6 max-w-2xl mx-auto">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-2">Daily Check-In</h2>
+        <button 
+          onClick={fetchQuestion} 
+          disabled={isLoading}
+          className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 w-full md:w-auto transition-all"
+        >
+          Generate Today's Question
+        </button>
       </div>
 
-      {/* Input Section (Text or Voice) */}
-      {question && !activityPlan && (
-        <div className="space-y-4">
-          <textarea 
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white min-h-[120px] focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="Type your response here or use the microphone..."
+      {question && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-4">
+          <h3 className="text-xl font-medium text-gray-800">{question}</h3>
+          
+          {/* TODO: Integrate Groq Whisper Audio Upload Component Here */}
+              
+          <textarea
+            className="w-full p-4 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[120px]"
+            placeholder="Type your answer here, or use the microphone..."
             value={userResponse}
             onChange={(e) => setUserResponse(e.target.value)}
           />
+
+          <button 
+            onClick={submitAnswer} 
+            disabled={isLoading}
+            className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-green-700 disabled:opacity-50 transition-all"
+          >
+            {isLoading ? "Processing..." : "Submit Answer"}
+          </button>
           
-          {/* Action Buttons with Tailwind Armor */}
-          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-            <button 
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`flex-1 ${isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-800 hover:bg-slate-700 border border-slate-600'} text-white px-6 py-4 rounded-xl font-bold text-lg transition-colors flex items-center justify-center break-words min-h-[64px] leading-tight`}
-            >
-              {isRecording ? t.stopBtn : t.speakBtn}
-            </button>
-
-            <button 
-              onClick={submitAnswer}
-              disabled={isLoading || isRecording}
-              className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-4 rounded-xl font-bold text-lg transition-colors break-words min-h-[64px] leading-tight flex items-center justify-center"
-            >
-              {isLoading && !isRecording ? t.loading : t.submitBtn}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Output Section (Activity Plan) */}
-      {activityPlan && (
-        <div className="bg-slate-800 border border-blue-500/30 rounded-xl p-6 mt-6 shadow-xl">
-          <h3 className="text-xl font-bold mb-4 text-blue-300">Recommended Activities for Today:</h3>
-          <div className="space-y-4 text-slate-200">
-            <p><span className="text-xl mr-2">🌅</span> <strong>Morning:</strong> {renderActivity(activityPlan.morning_activity)}</p>
-            <p><span className="text-xl mr-2">☀️</span> <strong>Afternoon:</strong> {renderActivity(activityPlan.afternoon_activity)}</p>
-            <p><span className="text-xl mr-2">🌙</span> <strong>Evening:</strong> {renderActivity(activityPlan.evening_activity)}</p>
-            <div className="mt-6 p-4 bg-slate-900/50 border border-slate-700 rounded-lg text-sm text-slate-400">
-              <strong>💡 Caregiver Note:</strong> {
-                typeof activityPlan.caregiver_rationale === "string" 
-                  ? activityPlan.caregiver_rationale 
-                  : JSON.stringify(activityPlan.caregiver_rationale)
-              }
-            </div>
-          </div>
+          {status && <p className="text-sm text-center text-gray-500 mt-2">{status}</p>}
         </div>
       )}
     </div>
