@@ -7,11 +7,15 @@ import { useState, useEffect } from "react";
  * the historical interaction data from the backend/Supabase database 
  * and renders it as a chronological feed of insights.
  */
-export default function DashboardTab() {
-  // --- State Management ---
+
+interface DashboardTabProps {
+  session: any;
+}
+
+
+export default function DashboardTab({ session }: DashboardTabProps) {
   const [history, setHistory] = useState<any[]>([]);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
-
   /**
    * Fetches the user's historical check-in data from the FastAPI backend.
    * Runs automatically when the component mounts.
@@ -19,7 +23,12 @@ export default function DashboardTab() {
   const loadHistory = async () => {
     setIsFetchingHistory(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/history`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/history`, {
+        // Attach the user's secure token to the request
+        headers: {
+          "Authorization": `Bearer ${session?.access_token}`
+        }
+      });
       const data = await res.json();
       setHistory(data.history || []);
     } catch (error) {
@@ -28,6 +37,7 @@ export default function DashboardTab() {
       setIsFetchingHistory(false);
     }
   };
+  
 
   // Lifecycle Hook: Load history immediately when this tab is opened
   useEffect(() => {

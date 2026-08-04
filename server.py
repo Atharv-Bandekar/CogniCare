@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from groq import Groq
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -15,7 +16,9 @@ import threading
 from src.agents.interviewer import InterviewerAgent
 from src.agents.evaluator import EvaluatorAgent
 from src.agents.coordinator import CoordinatorAgent
-from src.database.db import get_demo_user_id, log_conversation, log_insight, fetch_history, init_db
+
+# Notice: get_demo_user_id is GONE from this import line!
+from src.database.db import supabase, log_conversation, log_insight, fetch_history, init_db
 
 # Initialize agents
 interviewer = InterviewerAgent()
@@ -25,9 +28,7 @@ coordinator = CoordinatorAgent()
 # FastAPI Lifespan manages startup/shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize the database and load the DeBERTa model into memory on startup
     init_db()
-    # Loading in a thread so the server binds to the port immediately
     threading.Thread(target=evaluator.load_model, daemon=True).start()
     yield
 
@@ -39,16 +40,35 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# --- Add this CORS block right after initializing the app ---
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allows your Next.js app to connect
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Pydantic Models for Data Validation ---
+# --- Security Dependency ---
+security = HTTPBearer()
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Intercepts the Authorization header, extracts the JWT, and verifies 
+    it with Supabase. Returns the secure user_id if valid.
+    """
+    token = credentials.credentials
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+        return user_response.user.id
+    except Exception as e:
+        print(f"Auth Error: {e}")
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+# --- Pydantic Models ---
 class QuestionRequest(BaseModel):
     language: str = "English"
 
@@ -57,17 +77,18 @@ class AnalyzeRequest(BaseModel):
     question: str
     user_response: str
 
+
 # --- API Endpoints ---
 @app.get("/health")
 async def health_check():
-    """Simple endpoint to verify the server is running."""
     return {"status": "active", "agents": "initialized"}
 
+
 @app.post("/api/question")
-async def get_daily_question(req: QuestionRequest):
+async def get_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
     """Agent 1: Generates the localized daily memory question."""
     try:
-        history = fetch_history()
+        history = fetch_history(user_id)
         past_questions = [rec["question"] for rec in history] if history else []
         
         question = interviewer.generate_question(
@@ -78,16 +99,15 @@ async def get_daily_question(req: QuestionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/analyze")
-async def analyze_response(req: AnalyzeRequest):
+async def analyze_response(req: AnalyzeRequest, user_id: str = Depends(get_current_user)):
     """Agents 2 & 3: Evaluates the response and recommends an activity."""
     try:
-        user_id = get_demo_user_id()
-        
-        # 1. Log the initial conversation
+        # 1. Log the initial conversation securely using the verified user_id
         conv_id = log_conversation(user_id, req.question, req.user_response)
         
-        # 2. Agent 2: Evaluate (Base translation logic is handled inside your evaluate pipeline)
+        # 2. Agent 2: Evaluate 
         from src.agents.base import translate_to_english
         eval_text = translate_to_english(req.user_response, req.language)
         evaluation = evaluator.analyze(eval_text)
@@ -99,7 +119,7 @@ async def analyze_response(req: AnalyzeRequest):
             language=req.language
         )
         
-        # 4. Log the final insights
+        # 4. Log the final insights securely linking it to the conversation
         log_insight(
             conv_id,
             evaluation["sentiment_label"], evaluation["sentiment_score"],
@@ -113,23 +133,20 @@ async def analyze_response(req: AnalyzeRequest):
         }
     except Exception as e:
         import traceback
-        traceback.print_exc()  # <--- This will print the exact error to your terminal!
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/transcribe")
-async def transcribe_audio(audio: UploadFile = File(...)):
+async def transcribe_audio(audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     """Receives an audio blob from the browser and transcribes it using Groq."""
     try:
-        # Save the uploaded file temporarily
         temp_file_path = f"temp_{audio.filename}"
         with open(temp_file_path, "wb") as f:
             f.write(await audio.read())
             
-        # Initialize Groq client
         client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         
-        # Open the temp file and send to Groq Whisper
         with open(temp_file_path, "rb") as file:
             transcription = client.audio.transcriptions.create(
               file=(temp_file_path, file.read()),
@@ -138,9 +155,7 @@ async def transcribe_audio(audio: UploadFile = File(...)):
               response_format="json",
             )
             
-        # Clean up the temp file
         os.remove(temp_file_path)
-        
         return {"text": transcription.text}
         
     except Exception as e:
@@ -150,10 +165,10 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 
 
 @app.get("/api/history")
-async def get_history():
+async def get_history(user_id: str = Depends(get_current_user)):
     """Fetches the entire conversation and insight history for the dashboard."""
     try:
-        user_id = get_demo_user_id()
+        # Securely fetch ONLY this user's history
         history_data = fetch_history(user_id)
         return {"history": history_data}
     except Exception as e:

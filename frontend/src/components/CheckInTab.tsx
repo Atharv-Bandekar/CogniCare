@@ -5,10 +5,12 @@ import { useState, useRef } from "react";
  * CheckInTab Component Props
  * @property {string} language - The currently selected language (e.g., "English", "Tamil")
  * @property {Record<string, string>} t - The active translation dictionary for UI elements
+ * @property {any} session - The active Supabase user session token
  */
 interface CheckInTabProps {
   language: string;
   t: Record<string, string>;
+  session: any;
 }
 
 /**
@@ -17,7 +19,7 @@ interface CheckInTabProps {
  * microphone recording, audio transcription via Whisper, and displays the 
  * final personalized daily plan.
  */
-export default function CheckInTab({ language, t }: CheckInTabProps) {
+export default function CheckInTab({ language, t, session }: CheckInTabProps) {
   // --- State Management ---
   const [question, setQuestion] = useState("");
   const [userResponse, setUserResponse] = useState("");
@@ -68,7 +70,10 @@ export default function CheckInTab({ language, t }: CheckInTabProps) {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/question`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}` 
+        },
         body: JSON.stringify({ language }),
       });
       const data = await res.json();
@@ -133,6 +138,9 @@ export default function CheckInTab({ language, t }: CheckInTabProps) {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/transcribe`, {
         method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session?.access_token}`
+        },
         body: formData,
       });
       const data = await res.json();
@@ -158,7 +166,10 @@ export default function CheckInTab({ language, t }: CheckInTabProps) {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/analyze`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
         body: JSON.stringify({ language, question, user_response: userResponse }),
       });
       const data = await res.json();
