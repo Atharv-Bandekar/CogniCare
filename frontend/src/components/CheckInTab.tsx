@@ -30,7 +30,7 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
   const audioChunksRef = useRef<BlobPart[]>([]);
 
   /**
-   * Synthesizes and plays text-to-speech audio with aggressive regional fallback.
+   * Fetches high-quality Cloud TTS audio from our FastAPI backend
    */
   const speakText = (text: string, lang: string) => {
     if (!window.speechSynthesis) return;
@@ -47,16 +47,9 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
     
     const targetLangCode = langMap[lang] || "en-US";
     utterance.lang = targetLangCode;
-    
-    // Slow down the speech slightly for better elderly comprehension
-    utterance.rate = 0.9;
+    utterance.rate = 0.9; // Slightly slower for better comprehension
 
     const voices = window.speechSynthesis.getVoices();
-    
-    // Aggressive matching: 
-    // 1. Exact code (hi-IN)
-    // 2. Loose code (hi)
-    // 3. Name match (e.g. "Google हिन्दी" or "Google Marathi")
     const matchingVoice = 
       voices.find(v => v.lang === targetLangCode) || 
       voices.find(v => v.lang.startsWith(targetLangCode.split('-')[0])) ||
@@ -64,9 +57,6 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
     
     if (matchingVoice) {
       utterance.voice = matchingVoice;
-      console.log(`🎤 Using voice: ${matchingVoice.name}`);
-    } else {
-      console.warn(`⚠️ No native voice found for ${lang}. Falling back to system default.`);
     }
 
     window.speechSynthesis.speak(utterance);
