@@ -1,13 +1,17 @@
+import os
 import re
 import logging
+import requests
 
-LOCAL_MODEL_NAME = "microsoft/deberta-v3-small"
+# Pointing exactly to the DeBERTa-v3-small model on the Hugging Face Inference API
+HF_MODEL_NAME = "microsoft/deberta-v3-small"
+HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL_NAME}"
 
 class EvaluatorAgent:
     def __init__(self):
-        self.pipeline = None
         self.model_ready = False
-        self._load_error = None
+        self.api_key = None
+        self.headers = {}
 
         self.POSITIVE_WORDS = {
             "happy", "love", "loved", "wonderful", "great", "joy", "fun",
@@ -21,20 +25,18 @@ class EvaluatorAgent:
         }
 
     def load_model(self):
-        try:
-            from transformers import pipeline
-            self.pipeline = pipeline(
-                "text-classification",
-                model=LOCAL_MODEL_NAME,
-                tokenizer=LOCAL_MODEL_NAME,
-                top_k=None,
-            )
+        """
+        This no longer loads a 2.5GB model into RAM! 
+        Instead, it just prepares the lightweight API connection headers.
+        """
+        self.api_key = os.getenv("HUGGINGFACE_API_KEY")
+        if self.api_key:
+            self.headers = {"Authorization": f"Bearer {self.api_key}"}
             self.model_ready = True
-            logging.info(f"[Agent 2] Loaded local model: {LOCAL_MODEL_NAME}")
-        except Exception as exc:
-            self._load_error = str(exc)
+            logging.info(f"[Agent 2] Connected to Hugging Face Inference API for {HF_MODEL_NAME}")
+        else:
             self.model_ready = False
-            logging.warning(f"[Agent 2] Could not load local model, using heuristic fallback. Reason: {exc}")
+            logging.warning("[Agent 2] Missing HUGGINGFACE_API_KEY. Falling back to heuristic scoring.")
 
     def _heuristic_scores(self, text):
         words = re.findall(r"[a-zA-Z']+", text.lower())
@@ -63,16 +65,36 @@ class EvaluatorAgent:
         model_sentiment_score = None
         model_label = None
 
-        if self.model_ready and self.pipeline is not None:
+        if self.model_ready:
             try:
-                raw = self.pipeline(text[:512])
-                scores = raw[0] if isinstance(raw[0], list) else raw
-                best = max(scores, key=lambda d: d["score"])
-                model_label = best["label"]
-                model_sentiment_score = (best["score"] * 2) - 1
+                # Make a lightning-fast HTTP request instead of local inference
+                response = requests.post(
+                    HF_API_URL, 
+                    headers=self.headers, 
+                    json={"inputs": text[:512]},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    raw = response.json()
+                    # HF API usually returns lists of lists: [[{'label': 'LABEL', 'score': 0.9}]]
+                    scores = raw[0] if isinstance(raw, list) and isinstance(raw[0], list) else raw
+                    
+                    if isinstance(scores, list):
+                        best = max(scores, key=lambda d: d.get("score", 0))
+                        model_label = best.get("label")
+                        # Normalize the score to a -1.0 to 1.0 range for your hybrid calculation
+                        model_sentiment_score = (best.get("score", 0.5) * 2) - 1
+                elif response.status_code == 503:
+                    # 503 means the free tier model is currently waking up, gracefully fall back
+                    logging.warning("[Agent 2] HF Model is waking up. Using heuristic for now.")
+                else:
+                    logging.warning(f"[Agent 2] HF API returned {response.status_code}: {response.text}")
+            
             except Exception as exc:
-                logging.error(f"[Agent 2] Inference error, using heuristic only: {exc}")
+                logging.error(f"[Agent 2] API Inference error, using heuristic only: {exc}")
 
+        # Your exact 70/30 weight integration
         if model_sentiment_score is not None:
             final_sentiment_score = round(0.3 * model_sentiment_score + 0.7 * heuristic_sentiment, 3)
         else:
