@@ -116,6 +116,35 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
     }
   };
 
+
+  // Inside frontend/src/components/features/CheckInTab.tsx
+
+  const refreshQuestion = async () => {
+    setIsLoading(true);
+    setStatus("Finding a different question for you...");
+    setUserResponse(""); // Clear previous text input
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/refresh-question`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}` 
+        },
+        body: JSON.stringify({ language }),
+      });
+      const data = await res.json();
+      setQuestion(data.question);
+      setStatus("Please answer below:");
+      speakText(data.question);
+    } catch (error) {
+      setStatus("Error connecting to backend.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+
   // ==========================================
   // UI RENDERING
   // ==========================================
@@ -128,6 +157,7 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
   if (hasCheckedInToday && activityPlan) {
     let parsedPlan = typeof activityPlan === 'string' ? JSON.parse(activityPlan || "{}") : activityPlan;
     const textToRead = `Here is your plan. Morning: ${parsedPlan.morning_activity || 'Rest.'} Afternoon: ${parsedPlan.afternoon_activity || 'Rest.'} Evening: ${parsedPlan.evening_activity || 'Rest.'}`;
+
 
     return (
       <div className="p-6 max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -164,14 +194,35 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
     );
   }
 
-  // View 2: Default Question View
+  {/* View 2: Default Question View */}
   return (
     <div className="space-y-6 max-w-2xl mx-auto p-4 animate-fade-in">
       <p className="text-slate-400 italic text-center">{status}</p>
 
-      <Card className="text-center p-8">
+      {/* Clean card container without a heavy border or background distractions */}
+      <Card className="text-center p-8 space-y-4 relative bg-slate-900/40 border-slate-800/80">
+        {/* Minimalist Borderless Refresh Button */}
+        {question && (
+          <button 
+            onClick={refreshQuestion}
+            disabled={isLoading || isRecording}
+            title="Get a different question"
+            className="absolute top-4 right-4 group p-2 text-slate-400 hover:text-blue-400 transition-colors disabled:opacity-50"
+          >
+            <svg 
+              className="w-5 h-5 group-hover:-rotate-180 transition-transform duration-500 ease-in-out" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        )}
+
         {question ? (
-          <h2 className="text-2xl font-semibold leading-relaxed text-white">{question}</h2>
+          <h2 className="text-2xl font-semibold leading-relaxed text-white my-2 text-left sm:text-center">{question}</h2>
         ) : (
           <Button variant="primary" onClick={fetchQuestion} disabled={isLoading} className="w-auto mx-auto min-h-[64px]">
             {t?.generateBtn || "Generate Today's Question"}
@@ -182,7 +233,7 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
       {question && (
         <div className="space-y-4">
           <textarea 
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white min-h-[120px] focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white min-h-[120px] focus:ring-2 focus:ring-blue-500 focus:bg-slate-900 outline-none transition-all"
             placeholder="Type your response here or use the microphone..."
             value={userResponse}
             onChange={(e) => setUserResponse(e.target.value)}
