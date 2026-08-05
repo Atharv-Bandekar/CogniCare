@@ -1,7 +1,7 @@
 # src/api/dependencies.py
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from src.database.db import supabase
+from backend.database.db import supabase
 
 """
 API Dependencies & Security
