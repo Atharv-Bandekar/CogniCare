@@ -117,3 +117,19 @@ async def get_history(user_id: str = Depends(get_current_user)):
         return {"history": history_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/refresh-question")
+async def refresh_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
+    """
+    Generates a new alternative daily question, ensuring it avoids past history questions.
+    """
+    try:
+        history = fetch_history(user_id)
+        past_questions = [rec["question"] for rec in history] if history else []
+        
+        # Calls the Interviewer Agent for a fresh question
+        question = interviewer.generate_question(language=req.language, past_questions=past_questions)
+        return {"question": question, "language": req.language}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
