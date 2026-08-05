@@ -10,8 +10,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.database.db import init_db
-from src.api.routes import router, evaluator
+from backend.database.db import init_db
+from backend.api.routes import router, evaluator
 
 """
 Main Application Entry Point

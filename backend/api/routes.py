@@ -3,13 +3,12 @@ import os
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from groq import Groq
 
-from src.models.schemas import QuestionRequest, AnalyzeRequest
-from src.api.dependencies import get_current_user
-from src.database.db import log_conversation, log_insight, fetch_history
-from src.agents.interviewer import InterviewerAgent
-from src.agents.evaluator import EvaluatorAgent
-from src.agents.coordinator import CoordinatorAgent
-
+from backend.models.schemas import QuestionRequest, AnalyzeRequest
+from backend.api.dependencies import get_current_user
+from backend.database.db import log_conversation, log_insight, fetch_history
+from backend.agents.interviewer import InterviewerAgent
+from backend.agents.evaluator import EvaluatorAgent
+from backend.agents.coordinator import CoordinatorAgent
 """
 API Routes (Controllers)
 Maps HTTP endpoints to specific business logic and AI agent workflows.
