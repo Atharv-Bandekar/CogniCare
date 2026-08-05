@@ -1,6 +1,6 @@
 // frontend/src/components/AuthScreen.tsx
 import { useState } from "react";
-import { supabase } from "../utils/supabaseClient";
+import { supabase } from "../../utils/supabaseClient";
 
 /**
  * AuthScreen Component
