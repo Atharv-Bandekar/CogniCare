@@ -56,9 +56,15 @@ CogniCare AI runs on a **FastAPI backend** connected to a **unidirectional 3-age
 
 ---
 
-## 🗄️ Database Setup (Supabase)
+# Setup
 
-To run this project locally, your Supabase project needs two specific tables to store the AI's memory logs. Go to the **SQL Editor** in your Supabase dashboard and run this exact script:
+## 🗄️ Step 1: Database Setup (Supabase)
+
+Before you write or run any code, your local environment needs a database to store the AI's memory logs, otherwise the backend will crash on the first question!
+
+1. Log into [Supabase](https://supabase.com/) and create a new project (or open the existing development project).
+2. Go to the **SQL Editor** on the left sidebar.
+3. Paste and run this **exact script** to create your tables and security policies:
 
 ```sql
 -- 1. Create the conversations table
@@ -84,7 +90,7 @@ CREATE TABLE public.insights (
   PRIMARY KEY (id)
 );
 
--- Enable RLS on all tables
+-- Enable Row Level Security (RLS)
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE insights ENABLE ROW LEVEL SECURITY;
 
@@ -95,93 +101,115 @@ CREATE POLICY "Users can insert their own conversations" ON conversations FOR IN
 
 ---
 
-## Installation & Setup
+## ⚙️ Step 2: Backend Setup (FastAPI + AI Agents)
 
-You will need **Node.js**, **Python 3.10+**, and a **Supabase** account to run this project.
+The backend runs the AI pipeline. You will need Python 3.10+ installed.
 
-### 1. Backend Setup (FastAPI)
+1. Open your terminal and clone the repository:
 
 ```bash
-# Clone the repository
 git clone https://github.com/Atharv-Bandekar/CogniCare
 cd CogniCare/backend
-
-# Create a virtual environment
-python -m venv venv
-source venv/bin/activate  # Or venv\Scripts\activate on Windows
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Configure environment variables (create a .env file in the backend folder)
-# Add GROQ_API_KEY, HUGGINGFACE_API_KEY, SUPABASE_URL, and SUPABASE_KEY
 ```
 
-Start the FastAPI server:
+2. Create and activate a Python virtual environment to keep dependencies clean:
+
+```bash
+# Mac/Linux:
+python -m venv venv
+source venv/bin/activate
+
+# Windows:
+python -m venv venv
+venv\Scripts\activate
+```
+
+3. Install all required Python packages:
+
+```bash
+pip install -r requirements.txt
+```
+
+4. **CRITICAL STEP:** Create a file literally named `.env` inside the `backend` folder and paste these exact keys into it. Do not use quotes around the values.
+
+```env
+# backend/.env
+GROQ_API_KEY=your_groq_api_key_here
+HUGGINGFACE_API_KEY=your_huggingface_api_key_here
+SUPABASE_URL=your_supabase_url_here
+SUPABASE_KEY=your_supabase_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
+LLM_PROVIDER=groq
+```
+
+5. Start the backend server:
 
 ```bash
 uvicorn main:app --reload
-# Server runs on http://127.0.0.1:8000
 ```
 
-### 2. Frontend Setup (Next.js)
+*(Leave this terminal window open! The backend is now running on `http://127.0.0.1:8000`)*
 
-Open a new terminal window:
+---
+
+## 🎨 Step 3: Frontend Setup (Next.js)
+
+The frontend handles the UI, microphone recording, and user accounts. You will need Node.js installed.
+
+1. Open a **new, second terminal window** and navigate to the frontend folder:
 
 ```bash
 cd CogniCare/frontend
-
-# Install Node dependencies
-npm install
-
-# Configure frontend environment variables (create .env.local in the frontend folder)
-# Add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
 
-Start the Next.js development server:
+2. Install all Node dependencies:
+
+```bash
+npm install
+```
+
+3. **CRITICAL STEP:** Create a file named `.env.local` inside the `frontend` folder and paste these keys into it:
+
+```env
+# frontend/.env.local
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+```
+
+4. Start the frontend development server:
 
 ```bash
 npm run dev
-# App runs on http://localhost:3000
 ```
 
----
-
-## 🗺️ Developer Roadmap
-
-If you are looking to modify specific features, here is where everything lives:
-
-**Backend (`/backend`)**
-
-* `/agents/interviewer.py`: Modifies the daily questions, topic randomness, and prompt guardrails.
-* `/agents/evaluator.py`: Handles Hugging Face sentiment scoring and engagement logic.
-* `/agents/coordinator.py`: Generates the structured JSON morning/afternoon/evening activity plans.
-* `/api/routes.py`: The FastAPI endpoints (`/api/question`, `/api/analyze`, `/api/history`).
-* `/database/db.py`: All Supabase read/write operations.
-
-**Frontend (`/frontend`)**
-
-* `/src/components/features/CheckInTab.tsx`: The main daily check-in UI (Microphone, View Rendering, JSON Parsing).
-* `/src/components/features/DashboardTab.tsx`: The caregiver history view and AI insight badges.
-* `/src/utils/translations.ts`: The master dictionary for English, Hindi, Marathi, and Tamil UI text.
+**🎉 You are done! Open `http://localhost:3000` in your browser. You can now create an account and test the app.**
 
 ---
 
-## Notes for Reviewers & Judges
+## 🗺️ Developer Roadmap: Where is everything?
 
-* **Scalable Architecture:** The project has evolved from a monolithic script into a decoupled, RESTful web application ready for cloud deployment (e.g., Vercel + Render).
-* **Culturally-aware prompting:** The translation middleware avoids literal translations of Western concepts, adapting them into culturally relevant equivalents to prevent hallucination in regional languages.
-* **Resilient Parsing:** The frontend utilizes advanced Regex and optional chaining to gracefully handle and render AI hallucinations or missing JSON keys without crashing the UI.
-* **Zero Data Leakage:** Supabase JWT integration guarantees that caregivers and patients only ever have access to their distinct cryptographic identities.
+When you need to build new features or fix bugs, here is exactly where to look:
+
+### 🧠 The AI Brains (`/backend/agents/`)
+
+* **`interviewer.py`**: Want to change the daily questions? Add new topics? Or tweak the language strictness? Do it here.
+* **`evaluator.py`**: This connects to Hugging Face to calculate if the user is Happy, Sad, or Engaged.
+* **`coordinator.py`**: This takes the mood and generates the Morning/Afternoon/Evening JSON plan.
+
+### 🔌 The APIs & Database (`/backend/`)
+
+* **`api/routes.py`**: This is the traffic cop. When the frontend clicks "Submit", this file receives the request, calls the Agents, and sends the answer back.
+* **`database/db.py`**: All Supabase saving/reading happens here.
+
+### 🖥️ The UI (`/frontend/src/`)
+
+* **`components/features/CheckInTab.tsx`**: The main screen where users talk to the AI. Handles the microphone, the text area, and parsing the JSON plan.
+* **`components/features/DashboardTab.tsx`**: The caregiver screen showing past history and mood badges.
+* **`utils/translations.ts`**: If you need to add a new language or change a button's text, edit this dictionary!
 
 ---
 
-## Team
+## 🤝 Team
 
-Built by **Shubham Govekar** and **Atharv Bandekar** as part of the AICTE | IBM SkillsBuild AI Automation & Intelligent Solutions Internship, in partnership with BharatCares.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE) for details.
+Developed by **Shubham Govekar** and **Atharv Bandekar** for the AICTE | IBM SkillsBuild Internship. Deployment handled separately.
