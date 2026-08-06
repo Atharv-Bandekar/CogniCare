@@ -33,7 +33,7 @@ async def health_check():
 import random 
 
 @router.post("/api/question")
-async def generate_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
+def generate_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
     try:
         history = fetch_history(user_id)
         past_questions = [rec["question"] for rec in history] if history else []
@@ -67,7 +67,7 @@ async def generate_daily_question(req: QuestionRequest, user_id: str = Depends(g
     
 
 @router.post("/api/analyze")
-async def analyze_response(req: AnalyzeRequest, user_id: str = Depends(get_current_user)):
+def analyze_response(req: AnalyzeRequest, user_id: str = Depends(get_current_user)):
     """
     Agents 2 & 3: Evaluates the response and recommends a cognitive activity.
     Orchestrates translation, emotional evaluation, activity generation, and database logging.
@@ -135,7 +135,7 @@ async def transcribe_audio(
     
 
 @router.get("/api/history")
-async def get_history(user_id: str = Depends(get_current_user)):
+def get_history(user_id: str = Depends(get_current_user)):
     """
     Fetches the entire conversation and insight history for the user's dashboard view.
     """
@@ -147,7 +147,7 @@ async def get_history(user_id: str = Depends(get_current_user)):
 
 
 @router.post("/api/refresh-question")
-async def refresh_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
+def refresh_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
     """
     Generates a new alternative daily question, ensuring it avoids past history questions.
     """
