@@ -10,7 +10,8 @@ class InterviewerAgent:
         "Tell me about a place you visited that you'll never forget.",
     ]
     
-    def generate_question(self, language="English", past_questions=None):
+    def generate_question(self, language: str, past_questions: list, topic: str = None) -> str:
+        # ... your existing code ...
         if past_questions is None:
             past_questions = []
             
@@ -27,11 +28,17 @@ class InterviewerAgent:
         elif language.lower() == "marathi":
             language_enforcement += "You must use pure Marathi vocabulary (e.g., 'Tumcha', 'Kay', 'Kasa'). ABSOLUTELY DO NOT use Hindi words (e.g., 'Aapka', 'Kya', 'Kaise')."
 
+        # Add the topic to the system prompt!
+        topic_instruction = f"\nCRITICAL: The question MUST be about this specific topic: '{topic}'." if topic else ""
+
+
+        # Your updated system prompt
         system_prompt = (
             "You are a warm, empathetic cognitive-engagement companion for an elderly person. "
             "Your task is to ask a single, highly engaging, open-ended memory question to spark nostalgia and conversation. "
-            "Focus on sensory details, childhood, early career, or family traditions. "
-            f"{avoid_str}"
+            f"{topic_instruction} "
+            "Focus on sensory details and positive emotions. "
+            f"{avoid_str} "
             f"{language_enforcement} "
             f"Output ONLY the question in native {language} script. Do not include any conversational filler."
         )

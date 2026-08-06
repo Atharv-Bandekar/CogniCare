@@ -2,6 +2,8 @@
 import os
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from groq import Groq
+import traceback
+import random
 
 from backend.models.schemas import QuestionRequest, AnalyzeRequest
 from backend.api.dependencies import get_current_user
@@ -27,20 +29,42 @@ async def health_check():
     """Simple ping endpoint to verify the server and agents are alive."""
     return {"status": "active", "agents": "initialized"}
 
+# Make sure you import random at the top of routes.py!
+import random 
+
 @router.post("/api/question")
-async def get_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
-    """
-    Agent 1 (Interviewer): Generates the localized daily memory question.
-    It fetches the user's history to ensure previous questions are not repeated.
-    """
+async def generate_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
     try:
         history = fetch_history(user_id)
         past_questions = [rec["question"] for rec in history] if history else []
         
-        question = interviewer.generate_question(language=req.language, past_questions=past_questions)
+        # 1. Create a list of distinct topics for the AI to choose from
+        topics = [
+            "Childhood friendships and games",
+            "A memorable travel experience",
+            "The first job or career milestone",
+            "A piece of advice given to them when they were young",
+            "A historical event they lived through",
+            "Their favorite hobbies or skills they learned",
+            "Pets or animals they loved"
+        ]
+        
+        # 2. Pick a random topic every single time this route is hit
+        forced_topic = random.choice(topics)
+        
+        # 3. Pass that topic to your Interviewer Agent (you'll need to update the agent to accept this)
+        question = interviewer.generate_question(
+            language=req.language, 
+            past_questions=past_questions,
+            topic=forced_topic  # <-- Inject the random spark here
+        )
+        
         return {"question": question, "language": req.language}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @router.post("/api/analyze")
 async def analyze_response(req: AnalyzeRequest, user_id: str = Depends(get_current_user)):
@@ -53,7 +77,7 @@ async def analyze_response(req: AnalyzeRequest, user_id: str = Depends(get_curre
         conv_id = log_conversation(user_id, req.question, req.user_response)
         
         # Step 2: Agent 2 (Evaluator) analyzes sentiment and engagement
-        from src.agents.base import translate_to_english
+        from backend.agents.base import translate_to_english
         eval_text = translate_to_english(req.user_response, req.language)
         evaluation = evaluator.analyze(eval_text)
         
@@ -70,6 +94,9 @@ async def analyze_response(req: AnalyzeRequest, user_id: str = Depends(get_curre
         
         return {"evaluation": evaluation, "activity_plan": activity}
     except Exception as e:
+        print("\n=== FATAL ERROR IN /api/analyze ===")
+        traceback.print_exc() # <-- THIS will force the terminal to print the exact line number
+        print("===================================\n")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/transcribe")
@@ -127,6 +154,9 @@ async def refresh_daily_question(req: QuestionRequest, user_id: str = Depends(ge
     try:
         history = fetch_history(user_id)
         past_questions = [rec["question"] for rec in history] if history else []
+
+        if req.current_question:
+            past_questions.append(req.current_question)
         
         # Calls the Interviewer Agent for a fresh question
         question = interviewer.generate_question(language=req.language, past_questions=past_questions)

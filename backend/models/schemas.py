@@ -1,5 +1,6 @@
 # src/models/schemas.py
 from pydantic import BaseModel
+from typing import Optional
 
 """
 Data Schemas (Models)
@@ -12,6 +13,7 @@ class QuestionRequest(BaseModel):
     Payload for requesting a new daily memory question.
     """
     language: str = "English"
+    current_question: Optional[str] = None
 
 class AnalyzeRequest(BaseModel):
     """
