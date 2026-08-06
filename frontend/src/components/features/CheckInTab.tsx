@@ -117,12 +117,12 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
   };
 
 
-  // Inside frontend/src/components/features/CheckInTab.tsx
 
   const refreshQuestion = async () => {
     setIsLoading(true);
     setStatus("Finding a different question for you...");
-    setUserResponse(""); // Clear previous text input
+    
+    // We don't clear setUserResponse("") yet, just in case the request fails
     
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/refresh-question`, {
@@ -131,10 +131,13 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session?.access_token}` 
         },
-        body: JSON.stringify({ language }),
+        // 🚨 SEND THE CURRENT QUESTION TO BE BLACKLISTED
+        body: JSON.stringify({ language, current_question: question }), 
       });
+      
       const data = await res.json();
       setQuestion(data.question);
+      setUserResponse(""); // Clear the text input only after we successfully get a new question
       setStatus("Please answer below:");
       speakText(data.question);
     } catch (error) {
@@ -143,7 +146,6 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
       setIsLoading(false);
     }
   };
-
 
   // ==========================================
   // UI RENDERING
@@ -155,9 +157,22 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
 
   // View 1: Daily Itinerary
   if (hasCheckedInToday && activityPlan) {
-    let parsedPlan = typeof activityPlan === 'string' ? JSON.parse(activityPlan || "{}") : activityPlan;
-    const textToRead = `Here is your plan. Morning: ${parsedPlan.morning_activity || 'Rest.'} Afternoon: ${parsedPlan.afternoon_activity || 'Rest.'} Evening: ${parsedPlan.evening_activity || 'Rest.'}`;
+    
+    
+    let parsedPlan = activityPlan;
+    if (typeof activityPlan === 'string') {
+      try {
+        // First, try to extract JSON if the AI wrapped it in markdown blocks (```json ... ```)
+        const jsonMatch = activityPlan.match(/\{[\s\S]*\}/);
+        parsedPlan = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(activityPlan);
+      } catch (e) {
+        console.warn("AI returned plain text instead of JSON. Falling back gracefully.");
+        // If it's completely unparseable, dump it into the morning slot so the user still sees it!
+        parsedPlan = { morning_activity: activityPlan, afternoon_activity: "", evening_activity: "" };
+      }
+    }
 
+    const textToRead = `Here is your plan. Morning: ${parsedPlan.morning_activity || 'Rest.'} Afternoon: ${parsedPlan.afternoon_activity || 'Rest.'} Evening: ${parsedPlan.evening_activity || 'Rest.'}`;
 
     return (
       <div className="p-6 max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -166,7 +181,7 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
           <p className="text-slate-400 text-xl">Here is your personalized plan.</p>
         </div>
 
-        <div className="shadow-lg rounded-2xl p-6 border border-slate-700/50 bg-slate-800/20 backdrop-blur-sm space-y-6 text-left">
+        <div className="shadow-lg rounded-2xl p-6 bg-slate-900/40 border border-slate-800/80 space-y-6 text-left relative overflow-hidden">
           {parsedPlan.morning_activity && (
             <div className="bg-orange-500/10 border-l-4 border-orange-500 p-5 rounded-r-xl">
               <h4 className="font-bold text-orange-500 flex items-center gap-3 text-2xl mb-2">🌅 Morning</h4>
@@ -194,7 +209,7 @@ export default function CheckInTab({ language, t, session }: CheckInTabProps) {
     );
   }
 
-  {/* View 2: Default Question View */}
+  // View 2: Default Question View
   return (
     <div className="space-y-6 max-w-2xl mx-auto p-4 animate-fade-in">
       <p className="text-slate-400 italic text-center">{status}</p>
