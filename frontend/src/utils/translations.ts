@@ -88,7 +88,7 @@ export const uiTranslations: Record<string, any> = {
     readPlanBtn: "🔊 माझी योजना मोठ्याने वाचा",
     statusRefresh: "तुमच्यासाठी दुसरा प्रश्न शोधत आहे...",
     settingsTitle: "सेटिंग्ज आणि नियंत्रणे",
-    appLang: "अॅपची भाषा",
+    appLang: "ॲपची भाषा",
     textSize: "मजकुराचा आकार",
     sizeNormal: "सामान्य",
     sizeLarge: "मोठा",
