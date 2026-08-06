@@ -28,19 +28,20 @@ class InterviewerAgent:
         elif language.lower() == "marathi":
             language_enforcement += "You must use pure Marathi vocabulary (e.g., 'Tumcha', 'Kay', 'Kasa'). ABSOLUTELY DO NOT use Hindi words (e.g., 'Aapka', 'Kya', 'Kaise')."
 
-        # Add the topic to the system prompt!
-        topic_instruction = f"\nCRITICAL: The question MUST be about this specific topic: '{topic}'." if topic else ""
+        # strict topic instruction first
+        topic_instruction = f"CRITICAL: The question MUST be about this specific topic: '{topic}'." if topic else ""
 
-
-        # Your updated system prompt
+        # updated system prompt with aggressive language guardrails
         system_prompt = (
             "You are a warm, empathetic cognitive-engagement companion for an elderly person. "
             "Your task is to ask a single, highly engaging, open-ended memory question to spark nostalgia and conversation. "
             f"{topic_instruction} "
             "Focus on sensory details and positive emotions. "
             f"{avoid_str} "
-            f"{language_enforcement} "
-            f"Output ONLY the question in native {language} script. Do not include any conversational filler."
+            f"CRITICAL: You must output the final question strictly and exclusively in 100% pure {language} script. "
+            "Do NOT mix, embed, or hallucinate any English letters (A-Z), Latin characters, or transliteration inside the regional text. "
+            "Ensure flawless spelling and grammar. "
+            f"Output ONLY the question in native {language}. Do not include any conversational filler."
         )
         
         user_prompt = "Generate today's question."
