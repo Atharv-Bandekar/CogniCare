@@ -73,7 +73,7 @@ CREATE TABLE public.conversations (
   user_id uuid NOT NULL,
   question text,
   response text,
-  created_at timestamp with time zone DEFAULT now(),
+  timestamp timestamp with time zone DEFAULT now(),
   PRIMARY KEY (id)
 );
 
