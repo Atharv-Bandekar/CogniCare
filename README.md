@@ -136,8 +136,8 @@ pip install -r requirements.txt
 # backend/.env
 GROQ_API_KEY=your_groq_api_key_here
 HUGGINGFACE_API_KEY=your_huggingface_api_key_here
-SUPABASE_URL=your_supabase_url_here
-SUPABASE_KEY=your_supabase_anon_key_here
+SUPABASE_URL=your_supabase_url_here -> (https://[your-project-id-from-supabase].supabase.co)
+SUPABASE_KEY=your_supabase_anon_key_here -> -> (use anon key from the supabase dashboard)
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 LLM_PROVIDER=groq
 ```
