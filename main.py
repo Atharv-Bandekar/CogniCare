@@ -1,6 +1,5 @@
 # main.py
 import os
-import threading
 from dotenv import load_dotenv
 
 # Initialize environment variables before importing any dependent modules
@@ -11,7 +10,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database.db import init_db
-from backend.api.routes import router, evaluator
 from backend.api.routes import elders
 from backend.webhooks import twilio_webhook
 from backend.api.routes import recommendations
@@ -25,13 +23,9 @@ Configures FastAPI middleware, registers routing controllers, and manages startu
 async def lifespan(app: FastAPI):
     """
     Lifespan Context Manager.
-    Executes startup logic (DB initialization, async model loading) before accepting requests,
-    and handles graceful shutdown when the server stops.
+    Executes startup logic before accepting requests.
     """
     init_db()
-    
-    # Load heavy ML models on a background thread so it doesn't block server startup
-    threading.Thread(target=evaluator.load_model, daemon=True).start()
     yield
 
 # Initialize the FastAPI instance
@@ -51,8 +45,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount the modular API routes
-app.include_router(router)
+# Mount the modular API routes for V2
 app.include_router(elders.router, prefix="/api/elders", tags=["Elders"])
-app.include_router(twilio_webhook.router, prefix="/webhooks", tags=["Twilio Webhooks"])
 app.include_router(recommendations.router, prefix="/api", tags=["Recommendations"])
+app.include_router(twilio_webhook.router, prefix="/webhooks", tags=["Twilio Webhooks"])

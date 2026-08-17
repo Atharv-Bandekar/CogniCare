@@ -13,6 +13,24 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") # Use service role for backend admin tasks
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+def init_db():
+    """
+    Legacy database initialization for FastAPI startup.
+    (Supabase client is now initialized globally at the module level).
+    """
+    pass
+
+def log_conversation(*args, **kwargs):
+    """Legacy V1 function placeholder to prevent import errors."""
+    pass
+
+def log_insight(*args, **kwargs):
+    """Legacy V1 function placeholder to prevent import errors."""
+    pass
+
+def fetch_history(*args, **kwargs):
+    """Legacy V1 function placeholder to prevent import errors."""
+    return []
 
 # ==========================================
 # ELDER PROFILES
