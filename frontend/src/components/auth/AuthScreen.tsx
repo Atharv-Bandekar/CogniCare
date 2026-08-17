@@ -29,7 +29,11 @@ export default function AuthScreen() {
         if (error) throw error;
       }
     } catch (err: any) {
-      setMessage(err.message || "An error occurred during authentication.");
+      // 1. Force it to print the full object to the browser console
+      console.error("FULL AUTH ERROR:", err); 
+      
+      // 2. Force the screen to display the raw JSON structure
+      setMessage(JSON.stringify(err, null, 2)); 
     } finally {
       setLoading(false);
     }
