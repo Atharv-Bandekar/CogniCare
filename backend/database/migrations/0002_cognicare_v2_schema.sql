@@ -105,3 +105,34 @@ ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recommendations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE family_interactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weekly_reports ENABLE ROW LEVEL SECURITY;
+
+
+-- Function to perform pgvector cosine similarity searches for memories
+CREATE OR REPLACE FUNCTION match_memories (
+  query_embedding vector(384),
+  target_elder_id uuid,
+  match_threshold float,
+  match_count int
+)
+RETURNS TABLE (
+  id uuid,
+  content text,
+  category text,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    memories.id,
+    memories.content,
+    memories.category,
+    1 - (memories.embedding <=> query_embedding) AS similarity
+  FROM memories
+  WHERE memories.elder_id = target_elder_id
+    AND 1 - (memories.embedding <=> query_embedding) > match_threshold
+  ORDER BY memories.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
