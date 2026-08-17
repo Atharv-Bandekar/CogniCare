@@ -32,6 +32,19 @@ Originally a local desktop application, the system has been completely re-archit
 
 ---
 
+## 🗄️ Database Schema (V2)
+The backend relies on Supabase PostgreSQL with the `pgvector` extension. 
+
+* **`elder_profiles`**: Core elder configuration (language, timezone, proximity to caregiver, mobility constraints).
+* **`daily_interactions`**: Records the Twilio webhook interactions and transcripts.
+* **`interaction_insights`**: Stores the output of the HF DeBERTa evaluation (engagement, sentiment, topics).
+* **`memories`**: `pgvector` (384-dim) table storing extracted elder memories for Context Collision (RAG).
+* **`recommendations`**: AI-generated distance-appropriate actions for the caregiver.
+* **`family_interactions`**: Logs dashboard feedback (done, dismiss, custom suggestions) to weave into future prompts.
+* **`weekly_reports`**: Aggregated 7-day cognitive and emotional summaries.
+
+---
+
 ## Key Features
 
 - **Component-Driven Web UI:** A highly responsive, modern interface built with Next.js and Tailwind CSS, featuring dedicated Caregiver Dashboards and Patient Check-In tabs.
