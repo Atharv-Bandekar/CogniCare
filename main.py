@@ -14,6 +14,7 @@ from backend.database.db import init_db
 from backend.api.routes import router, evaluator
 from backend.api.routes import elders
 from backend.webhooks import twilio_webhook
+from backend.api.routes import recommendations
 
 """
 Main Application Entry Point
@@ -54,3 +55,4 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(elders.router, prefix="/api/elders", tags=["Elders"])
 app.include_router(twilio_webhook.router, prefix="/webhooks", tags=["Twilio Webhooks"])
+app.include_router(recommendations.router, prefix="/api", tags=["Recommendations"])
