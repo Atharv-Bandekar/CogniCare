@@ -24,6 +24,7 @@ interviewer = InterviewerAgent()
 evaluator = EvaluatorAgent()
 coordinator = CoordinatorAgent()
 
+
 @router.get("/health")
 async def health_check():
     """Simple ping endpoint to verify the server and agents are alive."""
@@ -32,22 +33,23 @@ async def health_check():
 # Make sure you import random at the top of routes.py!
 import random 
 
+
+topics = [
+    "Childhood friendships and games",
+    "A memorable travel experience",
+    "The first job or career milestone",
+    "A piece of advice given to them when they were young",
+    "A historical event they lived through",
+    "Their favorite hobbies or skills they learned",
+    "Pets or animals they loved"
+]
+
 @router.post("/api/question")
 def generate_daily_question(req: QuestionRequest, user_id: str = Depends(get_current_user)):
     try:
         history = fetch_history(user_id)
         past_questions = [rec["question"] for rec in history] if history else []
         
-        # 1. Create a list of distinct topics for the AI to choose from
-        topics = [
-            "Childhood friendships and games",
-            "A memorable travel experience",
-            "The first job or career milestone",
-            "A piece of advice given to them when they were young",
-            "A historical event they lived through",
-            "Their favorite hobbies or skills they learned",
-            "Pets or animals they loved"
-        ]
         
         # 2. Pick a random topic every single time this route is hit
         forced_topic = random.choice(topics)
