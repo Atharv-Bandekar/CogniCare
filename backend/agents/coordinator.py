@@ -1,91 +1,89 @@
+"""
+Coordinator Agent responsible for generating safe, actionable family recommendations.
+Enforces strict guardrails for proximity, mobility constraints, and clinical language.
+"""
+import os
 import json
-import re
-from .base import call_llm
+import logging
+from groq import Groq
 
-def extract_json_safely(llm_response: str) -> dict:
-    """Strips markdown and conversational text to cleanly parse JSON."""
+logger = logging.getLogger(__name__)
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+# Diagnostic words the AI is strictly forbidden from outputting
+FORBIDDEN_WORDS = ["dementia", "depression", "alzheimer", "cognitive impairment", "diagnose", "clinical"]
+
+def generate_recommendation(elder: dict, evaluator_output: dict, domain: str, memories: list, weather_summary: str) -> dict:
+    """
+    Calls Groq Llama-3 to generate a family recommendation based on today's interaction.
+    Applies hardcoded keyword safety filters before returning the result.
+    """
+    proximity = elder.get("proximity", "remote")
+    mobility = elder.get("mobility_constraints", [])
+    
+    system_prompt = f"""
+    You are generating ONE practical family recommendation based on today's elder interaction.
+
+    Inputs:
+    - Evaluator output: Engagement: {evaluator_output.get('engagement_level')}, Sentiment: {evaluator_output.get('sentiment_label')}, Topics: {evaluator_output.get('topics')}, Safety Flag: {evaluator_output.get('safety_flag')}
+    - Today's domain: {domain}
+    - Retrieved memories: {memories}
+    - Caregiver proximity: {proximity}  [remote | live_in | nearby]
+    - Mobility constraints: {mobility}
+    - Local weather: {weather_summary}
+
+    STRICT RULES:
+    1. Proximity governs recommendation TYPE:
+       - remote → phone/video call, voice message, photo sharing only. NEVER suggest in-person activity.
+       - live_in → in-person activities during natural moments (dinner, walk together, shared task).
+       - nearby → either remote or short in-person visit suggestions.
+    2. Mobility is a HARD CONSTRAINT: if mobility_constraints includes "seated_only" or "limited_outdoor",
+       NEVER suggest walking, standing, or outdoor physical activity. Suggest seated/indoor alternatives.
+    3. Weather guardrail: if weather indicates heavy rain or extreme heat AND recommendation is outdoor,
+       pivot to an indoor equivalent.
+    4. If safety_flag is true, the recommendation MUST include a gentle suggestion for the caregiver
+       to consider checking in more closely or consulting a professional — using non-clinical language.
+       NEVER use the words "dementia," "depression," "Alzheimer's," "cognitive impairment," "diagnose."
+    5. Output strictly in JSON format: {{ "recommendation_text": "...", "reason": "..." }}
+    """
+
     try:
-        # Find everything between the first { and the last }
-        match = re.search(r'\{.*\}', llm_response, re.DOTALL)
-        if match:
-            clean_text = match.group(0)
-            return json.loads(clean_text)
+        response = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "system", "content": system_prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3
+        )
         
-        # Fallback if the regex somehow misses, try parsing the raw string
-        return json.loads(llm_response)
+        result_text = response.choices[0].message.content
+        result_json = json.loads(result_text)
         
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse LLM output. Raw text was:\n{llm_response}")
-        return None # Return None so the caller knows to use the fallback
+        rec_text_lower = result_json.get("recommendation_text", "").lower()
 
-class CoordinatorAgent:
-    # 1. Update fallbacks to match the new JSON structure so the app doesn't crash if the API fails
-    FALLBACK_ACTIVITIES = {
-        "Positive": {
-            "morning_activity": "Sit by a window with your morning tea and reflect on your favorite memories.",
-            "afternoon_activity": "Look through an old photo album to find pictures related to your past.",
-            "evening_activity": "Call a family member or speak to someone at dinner to share this exact memory with them.",
-            "caregiver_rationale": "Leverages their positive, engaged mood to encourage active social sharing and nostalgia."
-        },
-        "Neutral": {
-            "morning_activity": "Take a slow, 10-minute walk around the house or garden to get some fresh air.",
-            "afternoon_activity": "Listen to a classic radio show or a favorite old song while resting.",
-            "evening_activity": "Ask a younger family member to show you photos of their day.",
-            "caregiver_rationale": "Provides gentle, low-strain stimulation to maintain baseline cognitive engagement."
-        },
-        "Negative": {
-            "morning_activity": "Sit somewhere sunny and comfortable with a warm drink for 10 minutes.",
-            "afternoon_activity": "Do a very light stretching exercise or deep breathing for 5 minutes.",
-            "evening_activity": "Have a quiet dinner with the family, focusing just on being present rather than talking heavily.",
-            "caregiver_rationale": "Prioritizes emotional comfort and rest over high cognitive demand."
-        }
+        # GUARDRAIL 1: Diagnostic language filter
+        if any(word in rec_text_lower for word in FORBIDDEN_WORDS):
+            logger.warning("Agent attempted to output diagnostic language. Overriding.")
+            return _fallback_recommendation()
+
+        # GUARDRAIL 2: Remote proximity check
+        if proximity == "remote" and any(word in rec_text_lower for word in ["walk together", "in person", "visit", "dinner"]):
+            logger.warning("Agent suggested in-person activity for remote caregiver. Overriding.")
+            return _fallback_recommendation()
+
+        # GUARDRAIL 3: Mobility constraint check
+        if any(c in mobility for c in ["seated_only", "limited_outdoor"]) and any(word in rec_text_lower for word in ["walk", "hike", "stand", "outside"]):
+            logger.warning("Agent suggested restricted physical activity. Overriding.")
+            return _fallback_recommendation()
+
+        return result_json
+
+    except Exception as e:
+        logger.error(f"Coordinator generation failed: {e}")
+        return _fallback_recommendation()
+
+def _fallback_recommendation() -> dict:
+    """Safe generic fallback if the AI fails or trips a safety guardrail."""
+    return {
+        "recommendation_text": "Give your loved one a quick phone call today to say hello and ask how their morning went.",
+        "reason": "A simple check-in builds connection safely."
     }
-
-    def generate_activity(self, user_text, evaluation, language="English"):
-        # 2. Inject the new JSON-forcing System Prompt
-        system_prompt = (
-            "You are an expert Geriatric Cognitive Engagement Specialist. Your task is to generate a personalized, "
-            "3-part daily activity plan for an elderly user (80+ years old) living in a multi-generational household.\n"
-            "INSTRUCTIONS:\n"
-            "1. Do NOT suggest quick, one-off tasks.\n"
-            "2. Create a structured plan broken into Morning, Afternoon, and Evening micro-activities.\n"
-            "3. Morning: Focus on gentle Sensory or light Physical engagement.\n"
-            "4. Afternoon: Focus on Cognitive or Creative engagement.\n"
-            "5. Evening: MUST focus on Social engagement (e.g., sharing a story with younger family members).\n"
-            "6. Keep activities low-strain, screen-free, and themed around the user's memory.\n"
-            f"7. CRITICAL: Output MUST be in {language} language.\n"
-            "OUTPUT FORMAT:\n"
-            "Return ONLY a valid JSON object with the exact keys: 'morning_activity', 'afternoon_activity', 'evening_activity', 'caregiver_rationale'. "
-            "Do not include markdown or conversational filler."
-        )
-        
-        # 3. Pass the DeBERTa-v3 sentiment state and user text directly into the prompt
-        user_prompt = (
-            f"User's conversational memory/topic: \"{user_text}\"\n"
-            f"User's current emotional state/mood: {evaluation['sentiment_label']} (score {evaluation['sentiment_score']})\n"
-            f"User's engagement level: {evaluation['engagement_level']}\n\n"
-            "Generate the JSON daily plan."
-        )
-
-        # 4. Give a massive token buffer to account for Devanagari/Tamil tokenization bloat
-        result = call_llm(system_prompt, user_prompt, max_tokens=1024)
-        
-        if result:
-            activity_plan = extract_json_safely(result)
-            if activity_plan:
-                # --- NEW: SCHEMA VALIDATOR ---
-                expected_keys = ["morning_activity", "afternoon_activity", "evening_activity", "caregiver_rationale"]
-                
-                for key in expected_keys:
-                    if key not in activity_plan:
-                        # If the AI forgot a key, patch it with a safe default
-                        print(f"⚠️ Warning: LLM missed the '{key}' key. Patching with default.")
-                        activity_plan[key] = f"No specific {key.replace('_', ' ')} generated. Spend time resting or chatting with family."
-                # -----------------------------
-                
-                return activity_plan
-
-        # Return the structured fallback if the LLM fails, times out, or fails to parse
-        return self.FALLBACK_ACTIVITIES.get(
-            evaluation["sentiment_label"], self.FALLBACK_ACTIVITIES["Neutral"]
-        )
