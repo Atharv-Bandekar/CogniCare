@@ -31,8 +31,13 @@ def mark_recommendation_done(recommendation_id: str, caregiver_user_id: str):
             "reaction": "done"
         })
         return {"status": "success"}
+    except ValueError as e:
+        # Perfectly organized: Catch the specific missing record error from db.py
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        # Fallback for all other database/system errors
         raise HTTPException(status_code=400, detail=str(e))
+    
 
 @router.post("/recommendations/{recommendation_id}/dismiss")
 def dismiss_recommendation(recommendation_id: str, caregiver_user_id: str):
@@ -47,6 +52,7 @@ def dismiss_recommendation(recommendation_id: str, caregiver_user_id: str):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.post("/recommendations/{recommendation_id}/suggest")
 def submit_custom_suggestion(recommendation_id: str, payload: SuggestionInput):
@@ -63,5 +69,8 @@ def submit_custom_suggestion(recommendation_id: str, payload: SuggestionInput):
             "caregiver_suggestion": payload.suggestion_text
         })
         return {"status": "success"}
+    except ValueError as e:
+        # Perfectly organized: matches your /done endpoint
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

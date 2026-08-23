@@ -141,13 +141,13 @@ def insert_recommendation(data: dict) -> dict:
     response = supabase.table('recommendations').insert(data).execute()
     return response.data[0]
 
-def update_recommendation_status(recommendation_id: str, status: str) -> dict:
-    """Updates recommendation status (e.g., 'pending' to 'done' or 'timed_out')."""
-    data = {
-        "status": status,
-        "resolved_at": datetime.utcnow().isoformat() if status in ['done', 'dismissed'] else None
-    }
-    response = supabase.table('recommendations').update(data).eq('id', recommendation_id).execute()
+def update_recommendation_status(recommendation_id: str, status: str):
+    # No try/except here! Let any Supabase errors bubble up to the router.
+    response = supabase.table("recommendations").update({"status": status}).eq("id", recommendation_id).execute()
+    
+    if not response.data:
+        raise ValueError(f"Recommendation with ID {recommendation_id} not found.")
+        
     return response.data[0]
 
 def get_recommendations_by_elder(elder_id: str, status: str | None = None) -> list[dict]:
@@ -169,10 +169,12 @@ def get_pending_recommendations_older_than(hours: int) -> list[dict]:
 # FAMILY INTERACTIONS (Retention Loop)
 # ==========================================
 
-def insert_family_interaction(data: dict) -> dict:
-    """Logs the caregiver's response (done/dismiss/custom) to a recommendation."""
-    response = supabase.table('family_interactions').insert(data).execute()
-    return response.data[0]
+def insert_family_interaction(data: dict):
+    # If this fails (e.g., our dummy IDs violate a foreign key), it safely bubbles up to the router
+    response = supabase.table("family_interactions").insert(data).execute()
+    
+    return response.data[0] if response.data else None
+
 
 def get_unincorporated_family_suggestion(elder_id: str) -> dict | None:
     """
