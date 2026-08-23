@@ -1,0 +1,78 @@
+# CogniCare local stack: Redis broker + FastAPI API + Celery worker + Celery beat.
+#
+#   docker compose up --build
+#
+# All three app services share one image (built once, reused). Secrets and
+# config come from your .env file (copy it from .env.example first).
+#
+# NOTE: Twilio must reach the API from the public internet, so you also need a
+# tunnel (cloudflared / ngrok) pointing at localhost:8000 — see docs/LOCAL_SETUP.md.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    image: cognicare-backend:local
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      # Override the .env defaults so the app talks to the `redis` service,
+      # not localhost (which, inside a container, is the container itself).
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # /openapi.json is always served by FastAPI, so it is a reliable "is the
+      # app importable and up" probe — and importability is the real risk here,
+      # since the Supabase client is built at import time.
+      test: ["CMD", "curl", "-f", "http://localhost:8000/openapi.json"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build: .
+    image: cognicare-backend:local
+    # MUST list every queue: tasks are routed to named queues, so a worker that
+    # only listens on the default 'inbound' queue would silently never run the
+    # scheduling, fallback, escalation, or reports tasks.
+    command: >
+      celery -A backend.celery_app:celery_app worker
+      -Q scheduling,inbound,fallback,escalation,reports
+      --loglevel=info
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  beat:
+    build: .
+    image: cognicare-backend:local
+    # The scheduler. Runs exactly one instance — it only enqueues jobs on a
+    # timer (daily questions every 15 min, stale-recommendation sweep hourly,
+    # weekly reports Monday 07:00); the worker above does the actual work.
+    command: celery -A backend.celery_app:celery_app beat --loglevel=info
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy

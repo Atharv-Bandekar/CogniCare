@@ -1,0 +1,27 @@
+# Keep the image small and the build fast: never copy these into the build.
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# The frontend is a separate Next.js app; it does not belong in the backend image.
+frontend/
+
+# Local SQLite from V1 — not used by the V2 Supabase backend.
+cognicare.db
+
+# Never bake secrets into the image; they arrive at runtime via env_file.
+.env
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
