@@ -95,6 +95,33 @@ def get_recent_engagement_scores(elder_id: str, lookback_days: int = 3) -> list[
     
     return [record['engagement_score'] for record in response.data if record.get('engagement_score') is not None]
 
+def get_insights_by_elder(elder_id: str, cycle_start, cycle_end) -> list[dict]:
+    """
+    Fetches all interaction insights for an elder within a [cycle_start, cycle_end]
+    date window. Used by the weekly report generator to summarize the cycle.
+
+    Mirrors the insights<->daily_interactions join used by get_recent_engagement_scores.
+    Each row includes the joined interaction's date and domain for aggregation.
+
+    Args:
+        elder_id (str): Elder profile UUID.
+        cycle_start: Window start (date or ISO 'YYYY-MM-DD' string), inclusive.
+        cycle_end: Window end (date or ISO 'YYYY-MM-DD' string), inclusive.
+
+    Returns:
+        list[dict]: Insight records ordered oldest-to-newest.
+    """
+    start = cycle_start.isoformat() if hasattr(cycle_start, "isoformat") else str(cycle_start)
+    end = cycle_end.isoformat() if hasattr(cycle_end, "isoformat") else str(cycle_end)
+    response = supabase.table('interaction_insights') \
+        .select('*, daily_interactions!inner(elder_id, interaction_date, domain)') \
+        .eq('daily_interactions.elder_id', elder_id) \
+        .gte('daily_interactions.interaction_date', start) \
+        .lte('daily_interactions.interaction_date', end) \
+        .order('created_at', desc=False) \
+        .execute()
+    return response.data
+
 
 # ==========================================
 # MEMORIES (pgvector RAG)
