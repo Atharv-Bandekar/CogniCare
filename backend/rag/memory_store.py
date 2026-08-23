@@ -4,7 +4,7 @@ from backend.agents.embeddings import embed_text
 
 # TODO: @schema-migration-dev Ensure these dependencies exist in `backend/database/db.py`.
 # Expected Interfaces:
-# def insert_memory(elder_id: str, content: str, category: str, source_id: str, embedding: List[float]) -> Dict[str, Any]:
+# def insert_memory(elder_id: str, content: str, category: str, source_interaction_id: str, embedding: List[float]) -> Dict[str, Any]:
 #     """Inserts a memory into the vector store."""
 # def vector_search_memories(elder_id: str, query_embedding: List[float], top_k: int) -> List[Dict[str, Any]]:
 #     """Returns top_k nearest memories using cosine similarity over pgvector."""
@@ -35,7 +35,7 @@ def store_memory(elder_id: str, content: str, category: str, source_interaction_
         elder_id=elder_id,
         content=content,
         category=category,
-        source_id=source_interaction_id,
+        source_interaction_id=source_interaction_id,
         embedding=embedding
     )
     return record
