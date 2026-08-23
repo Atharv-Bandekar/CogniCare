@@ -50,13 +50,13 @@ class EvaluatorAgent:
             heuristic_sentiment = 0.0
 
         if word_count >= 25:
-            engagement_level, engagement_score = "High", 0.9
+            engagement_level, engagement_score = "high", 0.9
         elif word_count >= 10:
-            engagement_level, engagement_score = "Medium", 0.6
+            engagement_level, engagement_score = "medium", 0.6
         elif word_count >= 1:
-            engagement_level, engagement_score = "Low", 0.3
+            engagement_level, engagement_score = "low", 0.3
         else:
-            engagement_level, engagement_score = "None", 0.0
+            engagement_level, engagement_score = "none", 0.0
 
         return heuristic_sentiment, engagement_level, engagement_score
 
