@@ -9,6 +9,7 @@ WHY the fan-out split: one elder's LLM/Twilio failure must not block everyone
 else's daily question, and per-elder tasks retry independently.
 """
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 
 from backend.celery_app import celery_app
@@ -198,7 +199,22 @@ def send_daily_question(self, elder_id: str):
     )
     interaction_id = (interaction or {}).get("id")
 
-    sent = send_whatsapp_message(elder.get("whatsapp_number"), question)
+    # WHY: business-initiated daily questions reach elders who haven't messaged in
+    # the last 24h, so WhatsApp requires an approved template (error 21654) rather
+    # than freeform text. If a template ContentSid is configured we send via the
+    # template; otherwise we send the question as freeform text (valid for a sender
+    # in an open session or with freeform privileges). The real question is always
+    # recorded above regardless, so the inbound reply still attaches to the right
+    # context even when the delivered message is a template.
+    template_sid = os.getenv("TWILIO_TEMPLATE_CONTENT_SID")
+    if template_sid:
+        sent = send_whatsapp_message(
+            elder.get("whatsapp_number"),
+            content_sid=template_sid,
+            content_variables=os.getenv("TWILIO_TEMPLATE_CONTENT_VARIABLES") or None,
+        )
+    else:
+        sent = send_whatsapp_message(elder.get("whatsapp_number"), question)
     if sent is None:
         logger.error("WhatsApp send failed for elder %s; will retry.", elder_id)
         raise self.retry(exc=RuntimeError("WhatsApp send failed"))
