@@ -62,6 +62,18 @@ def get_elder_by_whatsapp_number(whatsapp_number: str) -> dict | None:
     response = supabase.table('elder_profiles').select('*').eq('whatsapp_number', normalized).execute()
     return response.data[0] if response.data else None
 
+def get_elder_by_telegram_chat_id(chat_id: str) -> dict | None:
+    """
+    Resolves an elder profile from a Telegram chat id.
+
+    The Telegram bot is the recruiter-facing demo channel: unlike the WhatsApp
+    trial sender (template-only, pre-registered testers), anyone with the bot's
+    t.me link can chat live. Each chat maps to exactly one elder (auto-provisioned
+    on first contact by the telegram_bot task). See migration 0003.
+    """
+    response = supabase.table('elder_profiles').select('*').eq('telegram_chat_id', str(chat_id)).execute()
+    return response.data[0] if response.data else None
+
 def get_all_elders() -> list[dict]:
     """Fetches every elder profile. Used by the Celery beat fan-out tasks."""
     response = supabase.table('elder_profiles').select('*').execute()
@@ -246,7 +258,7 @@ def get_unincorporated_family_suggestion(elder_id: str) -> dict | None:
     response = supabase.table('family_interactions') \
         .select('*, recommendations!inner(elder_id)') \
         .eq('recommendations.elder_id', elder_id) \
-        .not_is('caregiver_suggestion', 'null') \
+        .not_.is_('caregiver_suggestion', 'null') \
         .is_('incorporated_into_interaction_id', 'null') \
         .order('created_at', desc=False) \
         .limit(1) \

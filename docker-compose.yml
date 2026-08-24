@@ -45,7 +45,9 @@ services:
       start_period: 15s
 
   worker:
-    build: .
+    # Reuses the image built by the `api` service (built once, run many). Giving
+    # every service its own `build:` made the parallel builder race to export the
+    # same tag and fail with "image already exists".
     image: cognicare-backend:local
     # MUST list every queue: tasks are routed to named queues, so a worker that
     # only listens on the default 'inbound' queue would silently never run the
@@ -63,7 +65,6 @@ services:
         condition: service_healthy
 
   beat:
-    build: .
     image: cognicare-backend:local
     # The scheduler. Runs exactly one instance — it only enqueues jobs on a
     # timer (daily questions every 15 min, stale-recommendation sweep hourly,

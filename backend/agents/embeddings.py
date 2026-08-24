@@ -9,7 +9,13 @@ logger = logging.getLogger(__name__)
 # WHY: We use a specific sentence-transformer model that outputs 384 dimensions,
 # perfectly matching our pgvector column configuration for efficient memory retrieval.
 HF_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
-HF_API_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{HF_MODEL_ID}"
+
+# WHY: Hugging Face retired the legacy `api-inference.huggingface.co` host and
+# moved serverless inference behind the provider router at `router.huggingface.co`.
+# The old subdomain no longer resolves in DNS, so the legacy URL fails with a
+# name-resolution error before any request is even sent. The current path is
+# /hf-inference/models/{model}/pipeline/{task}.
+HF_API_URL = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_ID}/pipeline/feature-extraction"
 
 def embed_text(text: str) -> List[float]:
     """

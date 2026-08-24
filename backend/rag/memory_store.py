@@ -52,12 +52,27 @@ def search_memories(elder_id: str, query_text: str, top_k: int = 3) -> List[Dict
     Returns:
         List[Dict[str, Any]]: A list of memory records matching the semantic query.
     """
-    # WHY: pgvector cosine similarity requires the search query to be embedded in the 
+    # WHY: pgvector cosine similarity requires the search query to be embedded in the
     # exact same vector space (same model/dimensions) as the stored records.
-    logger.info(f"Embedding search query for elder {elder_id}.")
-    query_embedding = embed_text(query_text)
-    
-    logger.info(f"Executing vector search for elder {elder_id}, requesting top {top_k} results.")
-    results = vector_search_memories(elder_id, query_embedding, top_k)
-    
-    return results
+    #
+    # WHY (resilience): memory retrieval is an *enhancement* to the daily question,
+    # not a prerequisite. If the embedding API is unreachable or the vector search
+    # fails, we degrade to "no memories found" rather than crashing the caller. This
+    # mirrors the inbound path, which already tolerates a failed embedding so one
+    # outage never breaks the core check-in loop. A brand-new elder has no stored
+    # memories anyway, so an empty result here is a normal, expected case.
+    try:
+        logger.info(f"Embedding search query for elder {elder_id}.")
+        query_embedding = embed_text(query_text)
+
+        logger.info(f"Executing vector search for elder {elder_id}, requesting top {top_k} results.")
+        results = vector_search_memories(elder_id, query_embedding, top_k)
+
+        return results
+    except Exception as exc:
+        logger.warning(
+            "Memory search unavailable for elder %s (%s); proceeding without retrieved memories.",
+            elder_id,
+            exc,
+        )
+        return []
