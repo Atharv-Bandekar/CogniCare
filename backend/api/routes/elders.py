@@ -45,6 +45,11 @@ def get_elder(elder_id: str):
         raise HTTPException(status_code=404, detail="Elder not found")
     return elder
 
+@router.get("/")
+def list_elders():
+    """Lists all elder profiles (for demo/debug)."""
+    return db.get_all_elders() or []
+
 @router.patch("/{elder_id}")
 def update_elder(elder_id: str, updates: ElderUpdate):
     """Updates specific fields on an existing elder profile."""
@@ -52,7 +57,7 @@ def update_elder(elder_id: str, updates: ElderUpdate):
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided to update")
-    
+
     try:
         updated_elder = db.update_elder_profile(elder_id, update_data)
         return updated_elder

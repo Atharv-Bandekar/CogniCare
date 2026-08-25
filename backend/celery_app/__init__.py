@@ -16,4 +16,5 @@ celery_app.conf.imports = (
     "backend.celery_app.tasks.scheduling",
     "backend.celery_app.tasks.fallback",
     "backend.celery_app.tasks.reports",
+    "backend.celery_app.tasks.telegram_bot",
 )

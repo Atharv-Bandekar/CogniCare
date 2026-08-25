@@ -46,7 +46,11 @@ def _call_groq(system_prompt, user_prompt, max_tokens, temperature):
         "temperature": temperature,
     }
     resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=20)
-    resp.raise_for_status()
+    # WHY: don't use raise_for_status() alone — it discards the response body.
+    # A 404 from Groq is almost always model_not_found / model_decommissioned, and
+    # the body names the offending model (which the bare status code does not).
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Groq API {resp.status_code}: {resp.text}")
     return resp.json()["choices"][0]["message"]["content"].strip()
 
 
