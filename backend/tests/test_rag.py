@@ -54,10 +54,10 @@ def test_store_memory(mock_insert, mock_embed):
     
     mock_embed.assert_called_once_with("Loves tea")
     mock_insert.assert_called_once_with(
-        elder_id="elder_1", 
-        content="Loves tea", 
-        category="hobbies", 
-        source_id="interaction_99", 
+        elder_id="elder_1",
+        content="Loves tea",
+        category="hobbies",
+        source_interaction_id="interaction_99",
         embedding=[0.5] * 384
     )
     assert result["id"] == "123"
