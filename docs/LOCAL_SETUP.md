@@ -1,17 +1,18 @@
-# CogniCare — Local End-to-End Setup (Updated for V2 + Telegram Demo)
+# CogniCare — Local End-to-End Setup (Telegram-Only Production)
 
 The goal of this runbook is narrow and important: **get one real message to travel the whole pipeline once.** When it does, everything after it is ordinary feature work. Until it does, every "finished" phase is only theory.
 
 ---
 
-## Two Channels, One Pipeline
+## Channel: Telegram (Production + Recruiter Demo)
 
 | Channel | Purpose | Access |
 |---------|---------|--------|
-| **WhatsApp (Twilio)** | Production elder channel | Pre-registered test numbers only, template-gated |
-| **Telegram Bot** | **Recruiter demo channel** | **Public — anyone with `t.me` link** |
+| **Telegram Bot** | **Production elder channel + Recruiter demo** | **Public — anyone with `t.me` link** |
 
-**The agent pipeline is identical.** Only the transport adapter and elder-resolution key differ.
+The agent pipeline is identical for both use cases. Only the elder-resolution key differs:
+- **Demo elders**: auto-provisioned by `telegram_chat_id` (recruiter walk-up)
+- **Production elders**: linked via deep-link `t.me/YourBot?start=elder_<uuid>` → `telegram_user_id`
 
 ---
 
@@ -19,16 +20,17 @@ The goal of this runbook is narrow and important: **get one real message to trav
 
 - **Docker Desktop** (gives you `docker compose`)
 - A tunnel tool — **cloudflared** (no account) or **ngrok** (free account)
-- Accounts (all free tier): **Supabase**, **Groq**, **Hugging Face**, **Twilio** (optional for local), **Telegram** (for demo)
+- Accounts (all free tier): **Supabase**, **Groq**, **Hugging Face**, **Telegram** (for demo)
 
 ---
 
 ## 1. Supabase: Database + Auth User
 
 1. Create a project at supabase.com. Wait for provisioning.
-2. **SQL Editor** → run both migrations in order:
+2. **SQL Editor** → run migrations in order:
    - `backend/database/migrations/0002_cognicare_v2_schema.sql` (core V2 schema + RLS)
    - `backend/database/migrations/0003_add_telegram_chat_id.sql` (Telegram demo support)
+   - `backend/database/migrations/0004_telegram_production.sql` (Telegram production support)
 3. **Authentication → Users → Add user** → email + password → copy **UUID** (for `TELEGRAM_DEMO_CAREGIVER_ID` and elder seeding)
 4. **Project Settings → API** → copy **Project URL** and **`service_role`** key (secret, not `anon`)
 
@@ -40,10 +42,12 @@ The goal of this runbook is narrow and important: **get one real message to trav
 |---------|-------|------------|
 | **Groq** | console.groq.com → API Keys | `gsk_...` |
 | **Hugging Face** | huggingface.co → Settings → Access Tokens | `hf_...` (read) |
-| **Twilio** | Console → Dashboard (optional for WhatsApp) | `AC...`, auth token |
 | **Telegram** | @BotFather → `/newbot` | `123456:ABC-DEF...` |
 
-**Twilio WhatsApp sandbox (optional):** Console → Messaging → Try it out → Send WhatsApp message → join code → send from your phone.
+**Telegram Bot setup:**
+1. Message `@BotFather` → `/newbot` → name it → get token
+2. Note the **bot username** (without @) for `TELEGRAM_BOT_USERNAME`
+3. No webhook needed yet — we'll register it after tunnel starts
 
 ---
 
@@ -59,12 +63,13 @@ Edit `.env` with all keys from steps 1–2.
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-**Telegram demo (required for recruiter-facing demo):**
+**Telegram (required for all channels):**
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_URL` (will fill after tunnel)
 - `TELEGRAM_WEBHOOK_SECRET` (random string)
 - `TELEGRAM_DEMO_CAREGIVER_ID` (UUID from step 1.3)
 - `TELEGRAM_VALIDATE_SECRET=true`
+- `TELEGRAM_BOT_USERNAME` (your bot's username from @BotFather, without @)
 
 **Celery/Redis:** Leave as-is (`redis://redis:6379/0`) — docker-compose overrides.
 
@@ -118,12 +123,12 @@ print(set_webhook())
 
 ---
 
-## 6. Test the Demo (Telegram)
+## 6. Test the Demo (Recruiter Walk-Up)
 
 1. Open `https://t.me/YourBotUsername`
 2. Tap **Start**
 3. You receive:
-   - Welcome message
+   - Welcome message (demo mode)
    - First question (domain = `episodic_memory`)
 4. Reply (text or voice note) → you get:
    - Warm companion acknowledgement
@@ -136,18 +141,39 @@ print(set_webhook())
 
 ---
 
-## 7. (Optional) Test WhatsApp Production Path
+## 7. Test Production Onboarding (Caregiver → Elder)
 
-**Seed an elder with your WhatsApp number:**
-```sql
-insert into public.elder_profiles
-  (caregiver_user_id, name, whatsapp_number, preferred_language,
-   preferred_interaction_time, proximity, cycle_day)
-values
-  ('YOUR-CAREGIVER-UUID', 'Test Elder', '+9198XXXXXXXX', 'en', '09:00', 'remote', 1);
+**As caregiver (via API or dashboard):**
+```bash
+# Create a production elder (no WhatsApp number)
+curl -X POST http://localhost:8000/api/elders/telegram \
+  -H "Content-Type: application/json" \
+  -d '{
+    "caregiver_user_id": "YOUR-CAREGIVER-UUID",
+    "name": "Test Elder",
+    "preferred_language": "en",
+    "preferred_interaction_time": "09:00",
+    "timezone": "Asia/Kolkata",
+    "proximity": "remote"
+  }'
+# Returns: {"elder_id": "...", "deep_link": "https://t.me/YourBot?start=elder_<uuid>", "bot_username": "YourBot"}
 ```
 
-**Trigger today's question:**
+**Share the deep-link with the elder** (via WhatsApp/SMS/email).
+
+**As elder:**
+1. Tap the deep-link → opens Telegram bot with `/start elder_<uuid>`
+2. Bot links your Telegram user_id to the elder profile
+3. You receive: Production welcome + First question
+4. Reply normally → full pipeline runs (companion reply + next question)
+
+---
+
+## 8. Scheduled Daily Questions (Beat)
+
+The scheduler runs every 15 minutes and sends questions at each elder's `preferred_interaction_time` via Telegram.
+
+**Trigger manually for testing:**
 ```bash
 # Get elder ID
 docker compose exec worker python -c "from backend.database.db import get_all_elders; print(get_all_elders())"
@@ -156,60 +182,42 @@ docker compose exec worker python -c "from backend.database.db import get_all_el
 docker compose exec worker python -c "from backend.celery_app.tasks.scheduling import send_daily_question; send_daily_question.apply_async(args=['ELDER-ID'], queue='scheduling')"
 ```
 
-**Reply on WhatsApp** → check `docker compose logs -f worker` for pipeline execution.
+---
+
+## 9. Frontend (Caregiver Dashboard)
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+# Set NEXT_PUBLIC_API_URL=http://localhost:8000
+npm install && npm run dev
+```
+
+Open `http://localhost:3000` → Sign up with the same Supabase Auth email/password.
+
+**Dashboard shows:**
+- Elder list (yours only, via RLS)
+- Daily interactions with insights
+- Recommendations with Done/Dismiss/Suggest actions
 
 ---
 
-## Key Architectural Notes (for Shubham)
-
-### What's Different from Phase 2 (V1)
-
-| V1 (Phase 2) | V2 (Current) |
-|--------------|--------------|
-| Synchronous `POST /api/analyze` | Async Celery pipeline (`inbound` queue) |
-| Frontend polls for questions | Celery Beat sends daily questions |
-| `conversations`/`insights` tables | `daily_interactions`/`interaction_insights`/`memories`/`recommendations` |
-| No scheduler | Celery Beat (daily, 12h fallback, weekly) |
-| No Telegram | Telegram bot for zero-friction demo |
-| No companion reply | `agents.companion` warm reply for Telegram |
-| WhatsApp only | Dual channel (WhatsApp + Telegram) |
-
-### Frontend Migration Needed (Phase 4A)
-
-| Current Frontend Call | Target V2 Endpoint |
-|----------------------|-------------------|
-| `GET /api/question` | `GET /api/elders/{elder_id}/question` |
-| `POST /api/transcribe` | Handled by webhook → Celery |
-| `POST /api/analyze` | Handled by webhook → Celery |
-| `GET /api/history` | `GET /api/{elder_id}/recommendations` |
-| `POST /api/refresh-question` | Handled by Beat |
-
----
-
-## Troubleshooting
+## 10. Common Issues
 
 | Symptom | Fix |
 |---------|-----|
-| `api`/`worker` exit on boot | Fix `SUPABASE_URL`/`SERVICE_ROLE_KEY` in `.env`, `docker compose up -d --force-recreate api worker` |
-| `TELEGRAM_BOT_TOKEN is not set` | `docker compose down && docker compose up --build -d` |
-| `Warming up` reply | Run migration 0003 + set `TELEGRAM_DEMO_CAREGIVER_ID` |
-| Webhook 400 "Failed to resolve host" | Tunnel URL expired → restart tunnel, update `.env`, re-register webhook |
-| Worker `unknown_sender` (WhatsApp) | Store bare E.164 (`+9198...`), no `whatsapp:` prefix |
-| Voice note → no reply | Check `docker compose logs worker` for Whisper errors |
+| `api`/`worker` crash on startup | `.env` missing `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` |
+| Webhook registration fails | `TELEGRAM_WEBHOOK_URL` must be HTTPS and reachable; restart containers after editing `.env` |
+| "Duplicate update" in logs | Normal — Telegram re-delivers if webhook >5s; idempotency handles it |
+| No companion reply | Check `TELEGRAM_BOT_TOKEN` valid; worker logs show `send_telegram_message` result |
+| Elder not found in pipeline | Run migration 0004; check `telegram_user_id` or `telegram_chat_id` on elder profile |
 
 ---
 
-## Production Deployment (Render)
+## 11. Architecture Notes (for Shubham)
 
-See main `README.md` → [Production Deployment (Render)](#production-deployment-render).
-
-Services: Web (Docker + honcho) + Free Redis via `render.yaml` Blueprint.
-
----
-
-## What This Proves
-
-When the Telegram demo works end-to-end, the **entire async pipeline** is verified:
-- Webhook auth → queue → idempotency → transcript → evaluate → memory → recommendation → escalation → companion reply → next question
-
-Phase 4 becomes normal feature building on a solid foundation.
+- **No Twilio/WhatsApp code runs** — removed from `main.py`, `scheduling.py`, `telegram_bot.py`
+- **Shared pipeline**: `backend/celery_app/tasks/shared_helpers.py` contains the core logic used by Telegram
+- **Elder resolution**: `_resolve_elder()` in `telegram_bot.py` handles demo vs production
+- **Deep-link format**: `https://t.me/<bot_username>?start=elder_<uuid>`
+- **Idempotency**: `tg:<chat_id>:<message_id>` stored in `daily_interactions.twilio_message_sid`

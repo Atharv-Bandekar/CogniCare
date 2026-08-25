@@ -140,11 +140,13 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 |----------------------|---------------------|--------|
 | `GET /api/question` | `GET /api/elders/{elder_id}/question` | ❌ Not implemented in backend |
 | `POST /api/transcribe` | `POST /api/elders/{elder_id}/transcribe` | ❌ Not implemented |
-| `POST /api/analyze` | Handled by Celery pipeline (async) | ❌ Architecture change |
+| `POST /api/analyze` | Handled by Celery pipeline (async, Telegram) | ❌ Architecture change |
 | `GET /api/history` | `GET /api/{elder_id}/recommendations` | ❌ Not implemented |
 | `POST /api/refresh-question` | Handled by Celery Beat | ❌ Architecture change |
 
 **Phase 4A scope:** Implement V2 API endpoints + WebSocket for live updates + migrate frontend calls.
+
+**Note:** The backend is now **Telegram-only** (no WhatsApp). Elders receive questions and reply via Telegram bot. The frontend dashboard connects to the same Supabase database to show insights and recommendations.
 
 ---
 
@@ -172,7 +174,7 @@ npm run type-check   # TypeScript check
 
 ## Notes for Shubham (Phase 4A)
 
-Your local `main` branch is at **Phase 2** (V1 synchronous architecture). The backend has advanced to **Phase 3B + Telegram demo** with a completely different async architecture.
+Your local `main` branch is at **Phase 2** (V1 synchronous architecture). The backend has advanced to **Phase 3B + Telegram-only production** with a completely different async architecture.
 
 **To catch up locally:**
 
@@ -186,11 +188,12 @@ Your local `main` branch is at **Phase 2** (V1 synchronous architecture). The ba
 2. **Run migrations on your Supabase:**
    - `backend/database/migrations/0002_cognicare_v2_schema.sql`
    - `backend/database/migrations/0003_add_telegram_chat_id.sql`
+   - `backend/database/migrations/0004_telegram_production.sql`
 
 3. **Use Docker for local dev (recommended):**
    ```bash
    cp .env.example .env
-   # Fill in your keys
+   # Fill in your keys (see .env.example for Telegram-only vars)
    docker compose up --build -d
    ```
    This runs API + worker + beat + Redis with the exact production config.
@@ -216,10 +219,12 @@ Your local `main` branch is at **Phase 2** (V1 synchronous architecture). The ba
    ```
 
 **Key architectural changes you'll see:**
+- **No WhatsApp/Twilio code** — backend is Telegram-only (production + demo)
 - No more synchronous `POST /api/analyze` — inbound messages go to Celery queue
-- Daily questions sent by Celery Beat (not frontend polling)
+- Daily questions sent by Celery Beat at `preferred_interaction_time` via Telegram
 - Recommendations created async, appear in dashboard via `GET /api/{elder_id}/recommendations`
-- Telegram bot for zero-friction recruiter demo
+- Telegram bot for zero-friction recruiter demo + production elders
+- Production elders onboarded via deep-link: `t.me/YourBot?start=elder_<uuid>`
 - WebSocket for live updates (planned Phase 4A)
 
 ---

@@ -62,6 +62,7 @@ async def telegram_inbound(
 
     payload = {
         "chat_id": chat_id,
+        "user_id": sender.get("id"),
         "message_id": message.get("message_id"),
         "text": message.get("text"),
         "voice_file_id": voice.get("file_id"),
