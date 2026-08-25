@@ -37,13 +37,22 @@ def _normalize_whatsapp(number: str) -> str:
     return number if number.startswith("whatsapp:") else f"whatsapp:{number}"
 
 
-def send_whatsapp_message(to_number: str, body: str) -> dict | None:
+def send_whatsapp_message(
+    to_number: str,
+    body: str | None = None,
+    content_sid: str | None = None,
+    content_variables: str | None = None,
+) -> dict | None:
     """
     Sends a WhatsApp message via Twilio.
 
     Args:
         to_number (str): Destination number, with or without the 'whatsapp:' prefix.
-        body (str): Message text.
+        body (str): Freeform message text. Used only when no content_sid is given.
+        content_sid (str | None): An approved WhatsApp template's ContentSid (HX...).
+            When provided, a template message is sent instead of freeform text.
+        content_variables (str | None): JSON string mapping template placeholders
+            ("1", "2", ...) to values, e.g. '{"1": "Tuesday"}'. Optional.
 
     Returns:
         dict | None: Twilio's JSON response (contains 'sid'), or None on failure.
@@ -58,16 +67,27 @@ def send_whatsapp_message(to_number: str, body: str) -> dict | None:
         logger.error("Twilio is not configured (missing SID/token/from). Message not sent.")
         return None
 
-    if not body or not body.strip():
-        logger.warning("Refusing to send an empty WhatsApp message.")
-        return None
-
     url = f"{TWILIO_API_BASE}/Accounts/{account_sid}/Messages.json"
     payload = {
         "To": _normalize_whatsapp(to_number),
         "From": from_number,
-        "Body": body,
     }
+
+    # WHY: A WhatsApp sender that isn't in an open 24-hour session — e.g. Twilio's
+    # WhatsApp *trial* number, or any business-initiated first contact — rejects
+    # freeform text with error 21654 and requires a pre-approved *template*,
+    # referenced by its ContentSid. When a ContentSid is supplied we send the
+    # template; otherwise we send a freeform Body (valid inside an open session,
+    # such as replying to an elder's own inbound message).
+    if content_sid:
+        payload["ContentSid"] = content_sid
+        if content_variables:
+            payload["ContentVariables"] = content_variables
+    else:
+        if not body or not body.strip():
+            logger.warning("Refusing to send an empty WhatsApp message.")
+            return None
+        payload["Body"] = body
 
     try:
         response = requests.post(
@@ -77,6 +97,14 @@ def send_whatsapp_message(to_number: str, body: str) -> dict | None:
         data = response.json()
         logger.info("WhatsApp message sent (sid=%s).", data.get("sid"))
         return data
+    except requests.HTTPError as exc:
+        # WHY: Twilio returns the *reason* in the response body (e.g. code 63007
+        # "no matching From channel", 21211 "invalid To", 63016 "message sent
+        # outside the allowed window"). The bare HTTP status hides all of that, so
+        # surface the body — otherwise every failure is an opaque "400 Bad Request".
+        body = exc.response.text if exc.response is not None else ""
+        logger.error("Failed to send WhatsApp message: %s | Twilio response: %s", exc, body)
+        return None
     except Exception as exc:
         logger.error("Failed to send WhatsApp message: %s", exc)
         return None
