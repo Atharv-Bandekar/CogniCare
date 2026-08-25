@@ -24,5 +24,6 @@ COPY . .
 
 EXPOSE 8000
 
-# Default command = the API. The worker and beat services override this.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command = honcho (runs FastAPI web + Celery worker via Procfile).
+# docker-compose.yml overrides this per-service (api/worker/beat).
+CMD ["honcho", "start"]
