@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: cognicare
+    runtime: python
+    buildCommand: "pip install --no-cache-dir -r requirements.txt"
+    startCommand: "honcho start"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: cognicare-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: cognicare-redis
+          property: connectionString
+  - type: redis
+    name: cognicare-redis
+    plan: free
