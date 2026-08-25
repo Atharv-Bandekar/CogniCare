@@ -95,6 +95,33 @@ def get_recent_engagement_scores(elder_id: str, lookback_days: int = 3) -> list[
     
     return [record['engagement_score'] for record in response.data if record.get('engagement_score') is not None]
 
+def get_insights_by_elder(elder_id: str, cycle_start, cycle_end) -> list[dict]:
+    """
+    Fetches all interaction insights for an elder within a [cycle_start, cycle_end]
+    date window. Used by the weekly report generator to summarize the cycle.
+
+    Mirrors the insights<->daily_interactions join used by get_recent_engagement_scores.
+    Each row includes the joined interaction's date and domain for aggregation.
+
+    Args:
+        elder_id (str): Elder profile UUID.
+        cycle_start: Window start (date or ISO 'YYYY-MM-DD' string), inclusive.
+        cycle_end: Window end (date or ISO 'YYYY-MM-DD' string), inclusive.
+
+    Returns:
+        list[dict]: Insight records ordered oldest-to-newest.
+    """
+    start = cycle_start.isoformat() if hasattr(cycle_start, "isoformat") else str(cycle_start)
+    end = cycle_end.isoformat() if hasattr(cycle_end, "isoformat") else str(cycle_end)
+    response = supabase.table('interaction_insights') \
+        .select('*, daily_interactions!inner(elder_id, interaction_date, domain)') \
+        .eq('daily_interactions.elder_id', elder_id) \
+        .gte('daily_interactions.interaction_date', start) \
+        .lte('daily_interactions.interaction_date', end) \
+        .order('created_at', desc=False) \
+        .execute()
+    return response.data
+
 
 # ==========================================
 # MEMORIES (pgvector RAG)
@@ -141,13 +168,13 @@ def insert_recommendation(data: dict) -> dict:
     response = supabase.table('recommendations').insert(data).execute()
     return response.data[0]
 
-def update_recommendation_status(recommendation_id: str, status: str) -> dict:
-    """Updates recommendation status (e.g., 'pending' to 'done' or 'timed_out')."""
-    data = {
-        "status": status,
-        "resolved_at": datetime.utcnow().isoformat() if status in ['done', 'dismissed'] else None
-    }
-    response = supabase.table('recommendations').update(data).eq('id', recommendation_id).execute()
+def update_recommendation_status(recommendation_id: str, status: str):
+    # No try/except here! Let any Supabase errors bubble up to the router.
+    response = supabase.table("recommendations").update({"status": status}).eq("id", recommendation_id).execute()
+    
+    if not response.data:
+        raise ValueError(f"Recommendation with ID {recommendation_id} not found.")
+        
     return response.data[0]
 
 def get_recommendations_by_elder(elder_id: str, status: str | None = None) -> list[dict]:
@@ -169,10 +196,12 @@ def get_pending_recommendations_older_than(hours: int) -> list[dict]:
 # FAMILY INTERACTIONS (Retention Loop)
 # ==========================================
 
-def insert_family_interaction(data: dict) -> dict:
-    """Logs the caregiver's response (done/dismiss/custom) to a recommendation."""
-    response = supabase.table('family_interactions').insert(data).execute()
-    return response.data[0]
+def insert_family_interaction(data: dict):
+    # If this fails (e.g., our dummy IDs violate a foreign key), it safely bubbles up to the router
+    response = supabase.table("family_interactions").insert(data).execute()
+    
+    return response.data[0] if response.data else None
+
 
 def get_unincorporated_family_suggestion(elder_id: str) -> dict | None:
     """
