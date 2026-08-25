@@ -1,228 +1,366 @@
 # CogniCare AI 🧠
 
-**Full-Stack Multi-Agent Cognitive Engagement Platform**
+**Full-Stack Multi-Agent Cognitive Wellness Platform for Elders**
 
-CogniCare AI is an AI-driven wellness companion for elderly users, built as an MVP for the **AICTE | IBM SkillsBuild AI Automation & Intelligent Solutions Internship (BharatCares)**, addressing **UN SDG 3: Good Health & Well-being**.
+CogniCare AI is an AI-driven cognitive engagement companion for elderly users, built as an MVP for the **AICTE | IBM SkillsBuild AI Automation & Intelligent Solutions Internship (BharatCares)**, addressing **UN SDG 3: Good Health & Well-being**.
 
-Originally a local desktop application, the system has been completely re-architected into a scalable, secure, full-stack web application. It engages users with daily memory-prompting questions, analyzes spoken or typed responses for emotional and cognitive signals, and recommends personalized offline activities — while giving caregivers secure, authenticated visibility into historical trends.
+Originally a local desktop application, the system has been re-architected into a scalable, secure, full-stack web application with an **async Celery pipeline**. It engages elders with daily memory-prompting questions (via WhatsApp), analyzes spoken/typed responses for emotional/cognitive signals, extracts long-term memories (RAG), and recommends personalized offline activities — while giving caregivers secure, authenticated visibility into historical trends via a Next.js dashboard.
 
 ---
 
 ## Table of Contents
 - [Tech Stack](#tech-stack)
-- [Key Features](#key-features)
 - [Architecture Overview](#architecture-overview)
-- [Database Setup (Supabase)](#database-setup-supabase)
+- [Database Schema (V2)](#database-schema-v2)
+- [Channels: Telegram (Demo) vs WhatsApp (Production)](#channels-telegram-demo-vs-whatsapp-production)
 - [Installation & Setup](#installation--setup)
-- [Developer Roadmap (Where to look)](#developer-roadmap)
-- [Notes for Reviewers & Judges](#notes-for-reviewers--judges)
+- [Local Development (Docker)](#local-development-docker)
+- [Production Deployment (Render)](#production-deployment-render)
+- [Environment Variables](#environment-variables)
+- [Developer Roadmap](#developer-roadmap)
+- [Phase Status](#phase-status)
 - [Team](#team)
-- [License](#license)
 
 ---
 
 ## Tech Stack
 
-* **Frontend:** Next.js (React), Tailwind CSS, TypeScript
-* **Backend:** FastAPI, Python (Synchronous Event Loop for Mobile Stability)
-* **Database & Auth:** Supabase (PostgreSQL) with Row Level Security (RLS)
-* **AI Orchestration:** Multi-Agent Pipeline (Groq / Llama 3 / Mixtral)
-* **Local NLP Inference:** Hugging Face Inference API (`DeBERTa-v3-small`)
-* **Audio Processing:** Browser MediaRecorder API & Groq Whisper API
-
----
-
-## 🗄️ Database Schema (V2)
-The backend relies on Supabase PostgreSQL with the `pgvector` extension. 
-
-* **`elder_profiles`**: Core elder configuration (language, timezone, proximity to caregiver, mobility constraints).
-* **`daily_interactions`**: Records the Twilio webhook interactions and transcripts.
-* **`interaction_insights`**: Stores the output of the HF DeBERTa evaluation (engagement, sentiment, topics).
-* **`memories`**: `pgvector` (384-dim) table storing extracted elder memories for Context Collision (RAG).
-* **`recommendations`**: AI-generated distance-appropriate actions for the caregiver.
-* **`family_interactions`**: Logs dashboard feedback (done, dismiss, custom suggestions) to weave into future prompts.
-* **`weekly_reports`**: Aggregated 7-day cognitive and emotional summaries.
-
----
-
-## Key Features
-
-- **Component-Driven Web UI:** A highly responsive, modern interface built with Next.js and Tailwind CSS, featuring dedicated Caregiver Dashboards and Patient Check-In tabs.
-- **Voice & Accessibility First:** Users can speak answers using native browser microphones, transcribed instantly via Whisper. Features include adjustable text sizes, dynamic Text-To-Speech (TTS), and an interactive **Audio Replay** button for accessibility.
-- **Flawless Multilingual Support:** Full UI and AI generation in English, Hindi, Marathi, and Tamil. Strict prompt guardrails prevent LLMs from hallucinating English letters into regional scripts.
-- **Enterprise-Grade Security:** User authentication and session management powered by Supabase Auth, protected at the database level using PostgreSQL Row Level Security (RLS).
-- **Mobile-Optimized Backend:** FastAPI routes are strictly configured to prevent event-loop blocking, ensuring seamless connectivity on aggressive mobile browser network timeouts.
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 14 (App Router), React 18, Tailwind CSS, TypeScript |
+| **Backend API** | FastAPI, Python 3.11, Uvicorn |
+| **Async Pipeline** | Celery 5.3 + Redis (Upstash/Render), Celery Beat scheduler |
+| **Database & Auth** | Supabase (PostgreSQL + `pgvector`), Row Level Security |
+| **LLM (Cloud)** | Groq (`openai/gpt-oss-20b`, `whisper-large-v3-turbo`) |
+| **Embeddings** | Hugging Face Inference Router (`sentence-transformers/all-MiniLM-L6-v2`, 384-dim) |
+| **Messaging** | Twilio WhatsApp (elder channel), Telegram Bot API (recruiter demo) |
+| **Observability** | Structured logging, Render logs |
 
 ---
 
 ## Architecture Overview
 
-CogniCare AI runs on a **FastAPI backend** connected to a **unidirectional 3-agent pipeline**, where each agent's output is the strict, structured input to the next.
-
-| Component | Tech | Responsibility |
-|---|---|---|
-| **Frontend Client** | Next.js | Handles UI, JWT session tokens, and browser audio recording |
-| **Agent 1: The Interviewer** | Cloud LLM (70B) | Generates a warm, culturally-aware daily memory question strictly in the user's selected language |
-| **Agent 2: The Evaluator** | HF API (DeBERTa)| Analyzes the translated English response for sentiment and engagement level using hybrid heuristics |
-| **Agent 3: The Coordinator** | Cloud LLM (70B) | Combines the raw response with Agent 2's analysis to recommend a concrete offline activity plan |
-| **Secure Data Layer** | Supabase (Postgres)| Validates JWTs and strictly enforces user data isolation before logging histories |
-
----
-
-# Setup
-
-## 🗄️ Step 1: Database Setup (Supabase)
-
-Before you write or run any code, your local environment needs a database to store the AI's memory logs, otherwise the backend will crash on the first question!
-
-1. Log into [Supabase](https://supabase.com/) and create a new project (or open the existing development project).
-2. Go to the **SQL Editor** on the left sidebar.
-3. Paste and run this **exact script** to create your tables and security policies:
-
-```sql
--- 1. Create the conversations table
-CREATE TABLE public.conversations (
-  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
-  user_id uuid NOT NULL,
-  question text,
-  response text,
-  timestamp timestamp with time zone DEFAULT now(),
-  PRIMARY KEY (id)
-);
-
--- 2. Create the insights table
-CREATE TABLE public.insights (
-  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
-  conversation_id uuid REFERENCES public.conversations(id),
-  sentiment_label text,
-  sentiment_score numeric,
-  engagement_level text,
-  engagement_score numeric,
-  recommended_activity text,
-  created_at timestamp with time zone DEFAULT now(),
-  PRIMARY KEY (id)
-);
-
--- Enable Row Level Security (RLS)
-ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE insights ENABLE ROW LEVEL SECURITY;
-
--- Enforce User-Data Isolation Policies
-CREATE POLICY "Users can view their own conversations" ON conversations FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert their own conversations" ON conversations FOR INSERT WITH CHECK (auth.uid() = user_id);
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Elder      │────▶│  Twilio      │────▶│  FastAPI Webhook│
+│  (WhatsApp) │     │  WhatsApp    │     │  /webhooks/     │
+└─────────────┘     └──────────────┘     └────────┬────────┘
+                                                   │
+                            ┌──────────────────────┘
+                            ▼
+                     ┌──────────────┐     ┌─────────────────┐
+                     │  Redis       │◀───▶│  Celery Worker  │
+                     │  (Broker)    │     │  (5 queues)     │
+                     └──────────────┘     └────────┬────────┘
+                                                   │
+         ┌─────────────────────────────────────────┼─────────────────────────────────────────┐
+         ▼                                         ▼                                         ▼
+┌──────────────────┐                    ┌──────────────────┐                    ┌──────────────────┐
+│ scheduling queue │                    │   inbound queue  │                    │ fallback queue   │
+│ dispatch_daily_  │                    │ process_inbound_ │                    │ expire_stale_    │
+│ questions        │                    │ message          │                    │ recommendations  │
+└──────────────────┘                    └────────┬─────────┘                    └──────────────────┘
+                                                 │
+                    ┌────────────────────────────┼────────────────────────────┐
+                    ▼                            ▼                            ▼
+           ┌───────────────┐            ┌───────────────┐            ┌───────────────┐
+           │ Interviewer   │            │  Evaluator    │            │ Coordinator   │
+           │ Agent         │            │  (Phase 3A)   │            │ Agent         │
+           │ generate_     │            │ evaluate_     │            │ generate_     │
+           │ question()    │            │ response()    │            │ recommendation()│
+           └───────┬───────┘            └───────┬───────┘            └───────┬───────┘
+                   │                            │                            │
+                   │              ┌─────────────┴─────────────┐              │
+                   │              ▼                           ▼              │
+                   │     ┌───────────────┐            ┌───────────────┐      │
+                   │     │ RAG Memory    │            │ Escalation    │      │
+                   │     │ Extraction &  │            │ Check         │      │
+                   │     │ Storage       │            │ (safety/      │      │
+                   │     │ (pgvector)    │            │ engagement)   │      │
+                   │     └───────────────┘            └───────────────┘      │
+                   │                            │                            │
+                   └────────────────────────────┼────────────────────────────┘
+                                                ▼
+                                    ┌─────────────────────┐
+                                    │ Supabase (Postgres) │
+                                    │ + pgvector          │
+                                    └─────────────────────┘
 ```
 
+**Key flows:**
+
+1. **Daily Question (scheduled):** Celery Beat → `dispatch_daily_questions` → `send_daily_question` (per elder) → Twilio template message → `daily_interactions` row opened
+2. **Inbound Reply (async):** Twilio webhook → enqueue `process_inbound_message` (idempotent on `MessageSid`) → transcribe (Whisper) → translate → evaluate → store insight → extract memories → generate recommendation → escalation check → advance `cycle_day`
+3. **Fallback Sweep (12h):** `expire_stale_recommendations` → pending → `timed_out`
+4. **Weekly Report (Mon 07:00):** `generate_all_weekly_reports` → 7-day aggregates → `weekly_reports` table
+5. **Telegram Demo (on-demand):** `/webhooks/telegram/inbound` → enqueue `process_telegram_update` → same agent pipeline → warm companion reply → next question
+
 ---
 
-## ⚙️ Step 2: Backend Setup (FastAPI + AI Agents)
+## Database Schema (V2)
 
-The backend runs the AI pipeline. You will need Python 3.10+ installed.
+Managed via SQL migrations in `backend/database/migrations/`:
 
-1. Open your terminal and clone the repository:
+| Migration | Description |
+|-----------|-------------|
+| `0001_initial_schema.sql` | Legacy (ignored) |
+| `0002_cognicare_v2_schema.sql` | Core V2 tables + RLS policies |
+| `0003_add_telegram_chat_id.sql` | Telegram demo elder support |
 
+**Core tables:**
+
+| Table | Purpose |
+|-------|---------|
+| `elder_profiles` | Elder config: name, language, timezone, proximity, mobility, `cycle_day` (1-7), `telegram_chat_id` (nullable, unique) |
+| `daily_interactions` | One row per scheduled question: `elder_id`, `domain`, `question`, `raw_response`, `transcript_source`, `language`, `twilio_message_sid` (idempotency key) |
+| `interaction_insights` | Evaluator output: `sentiment_label`, `sentiment_score`, `engagement_level`, `engagement_score`, `response_depth`, `topics[]`, `safety_flag` |
+| `memories` | `pgvector` (384-dim) long-term memories: `elder_id`, `content`, `embedding`, `source_interaction_id`, `tags[]` |
+| `recommendations` | Coordinator output for caregiver dashboard: `recommendation_text`, `reason`, `status` (pending/done/dismissed/timed_out) |
+| `family_interactions` | Caregiver feedback loop: `reaction` (done/dismiss), `caregiver_suggestion` |
+| `weekly_reports` | 7-day aggregates: `period_start`, `period_end`, `avg_engagement`, `dominant_sentiment`, `topic_frequency`, `total_interactions`, `markdown_summary` |
+
+**RLS:** Enabled on all tables. Policies enforce `caregiver_user_id` = `auth.uid()` for caregiver-scoped access. Elder profiles are inserted by caregivers; interactions are inserted by the service role (webhook/worker).
+
+---
+
+## Channels: Telegram (Demo) vs WhatsApp (Production)
+
+| Aspect | Telegram Bot (Recruiter Demo) | WhatsApp (Elder Production) |
+|--------|-------------------------------|----------------------------|
+| **Access** | Public `t.me/YourBot` — anyone can start | Pre-registered test numbers only (Twilio trial) |
+| **Auth** | Auto-provisions demo elder keyed by `chat_id` | Elder profiles created by caregiver onboarding |
+| **Messaging** | Freeform, bidirectional | Template-only (Twilio trial sender `+17372212163`) |
+| **Template** | N/A | `TWILIO_TEMPLATE_CONTENT_SID=HXfe5ab5f00277942d4d4200328b4d403c` (Appointment Reminders) |
+| **Pipeline** | Same agents (Interviewer→Evaluator→Coordinator→Companion) | Same agents, no companion reply (elder gets no ack) |
+| **Use case** | Recruiter walks up, taps "Start", holds live conversation | Elder receives daily question, replies; caregiver sees dashboard |
+
+**Why both?** Twilio's trial sender is template-gated even in-session (error 21654). A recruiter can't use WhatsApp without pre-registration. Telegram is zero-friction for demos.
+
+---
+
+## Installation & Setup
+
+### Prerequisites
+- Docker Desktop (includes Docker Compose)
+- Supabase project (PostgreSQL + `pgvector` extension)
+- Groq API key (LLM + Whisper)
+- Hugging Face API key (embeddings)
+- Twilio account (WhatsApp) — optional for local dev
+- Telegram bot token (from @BotFather) — for demo channel
+
+---
+
+## Local Development (Docker)
+
+**1. Clone & configure:**
 ```bash
 git clone https://github.com/Atharv-Bandekar/CogniCare
-cd CogniCare/backend
+cd CogniCare
+cp .env.example .env
+# Edit .env with your keys (see Environment Variables below)
 ```
 
-2. Create and activate a Python virtual environment to keep dependencies clean:
-
+**2. Run Supabase migrations:**
 ```bash
-# Mac/Linux:
-python -m venv venv
-source venv/bin/activate
-
-# Windows:
-python -m venv venv
-venv\Scripts\activate
+# In Supabase Dashboard → SQL Editor, run:
+# backend/database/migrations/0002_cognicare_v2_schema.sql
+# backend/database/migrations/0003_add_telegram_chat_id.sql
 ```
 
-3. Install all required Python packages:
-
+**3. Start local stack:**
 ```bash
-pip install -r requirements.txt
+docker compose up --build -d
+```
+Services:
+- `api` — FastAPI on `http://localhost:8000` (Swagger at `/docs`)
+- `worker` — Celery worker (all 5 queues)
+- `beat` — Celery Beat scheduler
+- `redis` — Redis 7 (local)
+
+**4. Register Telegram webhook (for local tunnel testing):**
+```bash
+# Start cloudflared tunnel to localhost:8000
+cloudflared tunnel --url http://localhost:8000
+# Copy the https URL, update .env:
+# TELEGRAM_WEBHOOK_URL=https://your-tunnel.trycloudflare.com/webhooks/telegram/inbound
+docker compose exec api python -c "
+from backend.integrations.telegram_client import set_webhook
+print(set_webhook())
+"
 ```
 
-4. **CRITICAL STEP:** Create a file literally named `.env` inside the `backend` folder and paste these exact keys into it. Do not use quotes around the values.
+**5. Test:** Open `t.me/YourBotUsername` → `/start`
+
+---
+
+## Production Deployment (Render)
+
+**Services created via `render.yaml` Blueprint:**
+
+| Service | Type | Command |
+|---------|------|---------|
+| `cognicare` | Web Service (Docker) | `honcho start` (FastAPI + Celery worker) |
+| `cognicare-redis` | Redis (Free) | Managed by Render |
+
+**Deploy:**
+1. Push `render.yaml` to `main`
+2. Render Dashboard → New → Blueprint → connect repo
+3. Add environment variables (see below)
+4. Deploy → watch logs for `honcho` starting both processes
+
+**Register production webhook:**
+```bash
+docker compose exec api python -c "
+from backend.integrations.telegram_client import set_webhook
+print(set_webhook())
+"
+# Uses TELEGRAM_WEBHOOK_URL=https://cognicare-backend.onrender.com/webhooks/telegram/inbound
+```
+
+---
+
+## Environment Variables
+
+Create `.env` from `.env.example`:
 
 ```env
-# backend/.env
-GROQ_API_KEY=your_groq_api_key_here
-HUGGINGFACE_API_KEY=your_huggingface_api_key_here
-SUPABASE_URL=your_supabase_url_here -> (https://[your-project-id-from-supabase].supabase.co)
-SUPABASE_KEY=your_supabase_anon_key_here -> -> (use anon key from the supabase dashboard)
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
+# =============================================================================
+# Supabase (REQUIRED — backend crashes at import if missing)
+# =============================================================================
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# =============================================================================
+# LLM (Groq)
+# =============================================================================
 LLM_PROVIDER=groq
+GROQ_API_KEY=gsk_your_key
+GROQ_MODEL=openai/gpt-oss-20b
+GROQ_WHISPER_MODEL=whisper-large-v3-turbo
+
+# =============================================================================
+# Embeddings (Hugging Face Inference Router)
+# =============================================================================
+HUGGINGFACE_API_KEY=hf_your_token
+
+# =============================================================================
+# Twilio WhatsApp (elder channel)
+# =============================================================================
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your-auth-token
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+TWILIO_WEBHOOK_URL=https://your-tunnel.trycloudflare.com/webhooks/twilio/inbound
+TWILIO_VALIDATE_SIGNATURE=true
+TWILIO_TEMPLATE_CONTENT_SID=HXfe5ab5f00277942d4d4200328b4d403c
+
+# =============================================================================
+# Celery / Redis
+# =============================================================================
+# Local: redis://redis:6379/0 (docker-compose overrides)
+# Render: auto-injected from cognicare-redis service
+# Upstash: rediss://default:TOKEN@host:6379?ssl_cert_reqs=CERT_REQUIRED
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
+CELERY_TIMEZONE=Asia/Kolkata
+
+# =============================================================================
+# Telegram Bot (recruiter demo channel)
+# =============================================================================
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF-your-token
+TELEGRAM_WEBHOOK_URL=https://cognicare-backend.onrender.com/webhooks/telegram/inbound
+TELEGRAM_WEBHOOK_SECRET=your-random-secret-string
+TELEGRAM_VALIDATE_SECRET=true
+TELEGRAM_DEMO_CAREGIVER_ID=uuid-from-supabase-auth-users-table
 ```
 
-5. Start the backend server:
-
-```bash
-uvicorn main:app --reload
-```
-
-*(Leave this terminal window open! The backend is now running on `http://127.0.0.1:8000`)*
-
----
-
-## 🎨 Step 3: Frontend Setup (Next.js)
-
-The frontend handles the UI, microphone recording, and user accounts. You will need Node.js installed.
-
-1. Open a **new, second terminal window** and navigate to the frontend folder:
-
-```bash
-cd CogniCare/frontend
-```
-
-2. Install all Node dependencies:
-
-```bash
-npm install
-```
-
-3. **CRITICAL STEP:** Create a file named `.env.local` inside the `frontend` folder and paste these keys into it:
-
+**Frontend** (`frontend/.env.local`):
 ```env
-# frontend/.env.local
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_API_URL=https://cognicare-backend.onrender.com
 ```
-
-4. Start the frontend development server:
-
-```bash
-npm run dev
-```
-
-**🎉 You are done! Open `http://localhost:3000` in your browser. You can now create an account and test the app.**
 
 ---
 
-## 🗺️ Developer Roadmap: Where is everything?
+## Developer Roadmap
 
-When you need to build new features or fix bugs, here is exactly where to look:
+### 🧠 AI Agents (`backend/agents/`)
+| File | Responsibility |
+|------|----------------|
+| `interviewer.py` | Generates daily memory questions (DDA + RAG context, multilingual) |
+| `evaluator.py` | **Phase 3A:** `evaluate_response(text)` → structured insight (sentiment, engagement, topics, safety) |
+| `coordinator.py` | **Phase 3A:** `generate_recommendation(elder, evaluator_output, domain, memories, weather)` → caregiver recommendation |
+| `companion.py` | Warm, user-facing reply for Telegram channel (acknowledges elder's actual words) |
+| `escalation.py` | **Phase 3A:** `check_escalation(elder_id, evaluator_output)` → safety/engagement alerts |
+| `report_generator.py` | **Phase 3A:** `generate_weekly_report(elder_id, insights_7d)` → markdown summary |
+| `question_engine.py` | Domain rotation (7-day), difficulty adaptation, RAG context building |
+| `embeddings.py` | HF Inference Router client (fixed endpoint) |
+| `base.py` | Shared Groq client with error logging |
 
-### 🧠 The AI Brains (`/backend/agents/`)
+### ⚙️ Celery Pipeline (`backend/celery_app/`)
+| File | Responsibility |
+|------|----------------|
+| `config.py` | Queues, routes, acks_late, time limits, beat schedule import |
+| `beat_schedule.py` | Cron definitions: daily questions (15min), fallback (12h), weekly reports (Mon 07:00) |
+| `tasks/scheduling.py` | `dispatch_daily_questions`, `send_daily_question` (template-aware) |
+| `tasks/inbound.py` | **Core 10-step pipeline** — idempotent, graceful degradation |
+| `tasks/fallback.py` | `expire_stale_recommendations` |
+| `tasks/reports.py` | `generate_all_weekly_reports`, `generate_weekly_report_for_elder` |
+| `tasks/telegram_bot.py` | Telegram on-demand pipeline (reuses inbound helpers) |
 
-* **`interviewer.py`**: Want to change the daily questions? Add new topics? Or tweak the language strictness? Do it here.
-* **`evaluator.py`**: This connects to Hugging Face to calculate if the user is Happy, Sad, or Engaged.
-* **`coordinator.py`**: This takes the mood and generates the Morning/Afternoon/Evening JSON plan.
+### 🔌 Webhooks (`backend/webhooks/`)
+| File | Purpose |
+|------|---------|
+| `twilio_webhook.py` | `POST /webhooks/twilio/inbound` — signature validation, enqueues to `inbound` queue |
+| `telegram_webhook.py` | `POST /webhooks/telegram/inbound` — secret token validation, enqueues to `inbound` queue |
 
-### 🔌 The APIs & Database (`/backend/`)
+### 🗄️ Database (`backend/database/`)
+| File | Purpose |
+|------|---------|
+| `db.py` | All Supabase CRUD + helpers (`get_elder_by_whatsapp_number`, `get_elder_by_telegram_chat_id`, `get_open_interaction_for_elder`, `update_daily_interaction`, etc.) |
+| `migrations/0002_cognicare_v2_schema.sql` | Core schema + RLS |
+| `migrations/0003_add_telegram_chat_id.sql` | Telegram demo support |
 
-* **`api/routes.py`**: This is the traffic cop. When the frontend clicks "Submit", this file receives the request, calls the Agents, and sends the answer back.
-* **`database/db.py`**: All Supabase saving/reading happens here.
+### 🌐 API Routes (`backend/api/routes/`)
+| File | Endpoints |
+|------|-----------|
+| `elders.py` | `POST/GET/PATCH /api/elders` — onboarding & profile management |
+| `recommendations.py` | `GET /api/{elder_id}/recommendations`, `POST /recommendations/{id}/done|dismiss|suggest` — caregiver dashboard |
 
-### 🖥️ The UI (`/frontend/src/`)
-
-* **`components/features/CheckInTab.tsx`**: The main screen where users talk to the AI. Handles the microphone, the text area, and parsing the JSON plan.
-* **`components/features/DashboardTab.tsx`**: The caregiver screen showing past history and mood badges.
-* **`utils/translations.ts`**: If you need to add a new language or change a button's text, edit this dictionary!
+### 🖥️ Frontend (`frontend/src/`)
+| Path | Purpose |
+|------|---------|
+| `components/features/CheckInTab.tsx` | Elder check-in (voice/text, TTS, replay) |
+| `components/features/DashboardTab.tsx` | Caregiver dashboard (history, insights, recommendations) |
+| `components/layout/SettingsSidebar.tsx` | Language, accessibility, elder profile |
+| `hooks/useAudioRecorder.ts` | Browser MediaRecorder + Whisper upload |
+| `utils/translations.ts` | EN/HI/MR/TA UI strings |
 
 ---
 
-## 🤝 Team
+## Phase Status
 
-Developed by **Shubham Govekar** and **Atharv Bandekar** for the AICTE | IBM SkillsBuild Internship. Deployment handled separately.
+| Phase | Branch | Status | Tests | Description |
+|-------|--------|--------|-------|-------------|
+| **Pre-3A fixes** | `main` | ✅ Merged | — | Bug fixes: `source_id`→`source_interaction_id`, engagement case, imports |
+| **Phase 3A** | `feature/evaluator-escalation-reports` | ✅ Complete, **unpushed** | 28/28 | Evaluator contract, escalation, weekly report orchestrator |
+| **Phase 3B** | `feature/celery-pipeline-3b` | ✅ Complete, **unpushed** | 103/103 | Async Celery pipeline, Twilio/Whisper, webhook auth, beat scheduler |
+| **Telegram Demo** | `main` | ✅ Merged | — | Telegram bot, auto-provisioning, companion reply, webhook |
+| **Render Deploy** | `main` | ✅ Live | — | Docker + honcho + Upstash Redis on Render Free tier |
+
+**Next:** Phase 4A (Frontend V2 integration — connect dashboard to real V2 endpoints, WebSocket for live updates, recommendation feedback UI).
+
+---
+
+## Team
+
+Developed by **Atharv Bandekar** and **Shubham Govekar** for the AICTE | IBM SkillsBuild Internship (BharatCares).
+
+- **Atharv (Member A):** Backend architecture, AI agents (3A), Celery pipeline (3B), Telegram demo, deployment
+- **Shubham (Member B):** Frontend (V1), Database schema (V2), Supabase/RLS, Twilio integration
+
+---
+
+## License
+
+MIT — see `LICENSE` for details.
