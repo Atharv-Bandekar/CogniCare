@@ -1,7 +1,7 @@
 # CogniCare backend image — serves the FastAPI app and runs the Celery
 # worker/beat. All three services in docker-compose share this one image;
 # only the command differs.
-FROM python:3.13-slim
+FROM python:3.11-slim
 
 # curl is used by the compose healthcheck; build-essential covers any package
 # that needs a C toolchain to build a wheel.
