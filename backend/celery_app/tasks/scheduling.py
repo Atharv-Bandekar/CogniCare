@@ -3,9 +3,9 @@ Scheduling tasks: sending each elder their daily question at their preferred loc
 
 Two tasks:
     dispatch_daily_questions()   — beat-driven fan-out; finds elders due right now
-    send_daily_question(elder_id) — builds and sends one elder's question
+    send_daily_question(elder_id) — builds and sends one elder's question (Telegram)
 
-WHY the fan-out split: one elder's LLM/Twilio failure must not block everyone
+WHY the fan-out split: one elder's LLM/Telegram failure must not block everyone
 else's daily question, and per-elder tasks retry independently.
 """
 import logging
@@ -25,7 +25,7 @@ from backend.database.db import (
 )
 from backend.agents.question_engine import build_question_context, get_todays_domain
 from backend.agents.interviewer import InterviewerAgent
-from backend.integrations.twilio_client import send_whatsapp_message
+from backend.integrations.telegram_client import send_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +134,11 @@ def dispatch_daily_questions():
 )
 def send_daily_question(self, elder_id: str):
     """
-    Builds today's question for one elder, sends it over WhatsApp, records the
+    Builds today's question for one elder, sends it over Telegram, records the
     interaction, and advances the 7-day cognitive rotation.
+
+    Production elders: send to their telegram_chat_id (linked via deep-link).
+    Demo elders: send to their telegram_chat_id (auto-provisioned).
 
     Returns:
         dict: Outcome summary including the domain used.
@@ -199,25 +202,18 @@ def send_daily_question(self, elder_id: str):
     )
     interaction_id = (interaction or {}).get("id")
 
-    # WHY: business-initiated daily questions reach elders who haven't messaged in
-    # the last 24h, so WhatsApp requires an approved template (error 21654) rather
-    # than freeform text. If a template ContentSid is configured we send via the
-    # template; otherwise we send the question as freeform text (valid for a sender
-    # in an open session or with freeform privileges). The real question is always
-    # recorded above regardless, so the inbound reply still attaches to the right
-    # context even when the delivered message is a template.
-    template_sid = os.getenv("TWILIO_TEMPLATE_CONTENT_SID")
-    if template_sid:
-        sent = send_whatsapp_message(
-            elder.get("whatsapp_number"),
-            content_sid=template_sid,
-            content_variables=os.getenv("TWILIO_TEMPLATE_CONTENT_VARIABLES") or None,
-        )
-    else:
-        sent = send_whatsapp_message(elder.get("whatsapp_number"), question)
+    # Send via Telegram (freeform, no template needed)
+    # Production elders have telegram_chat_id set via deep-link onboarding
+    # Demo elders have telegram_chat_id set via auto-provisioning
+    chat_id = elder.get("telegram_chat_id")
+    if not chat_id:
+        logger.error("Elder %s has no telegram_chat_id; cannot send daily question.", elder_id)
+        raise self.retry(exc=RuntimeError("No telegram_chat_id for elder"))
+
+    sent = send_telegram_message(chat_id, question)
     if sent is None:
-        logger.error("WhatsApp send failed for elder %s; will retry.", elder_id)
-        raise self.retry(exc=RuntimeError("WhatsApp send failed"))
+        logger.error("Telegram send failed for elder %s; will retry.", elder_id)
+        raise self.retry(exc=RuntimeError("Telegram send failed"))
 
     # Mark the caregiver suggestion as used, now that it's actually in a question.
     if family_suggestion and interaction_id:

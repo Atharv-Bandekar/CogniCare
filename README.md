@@ -4,7 +4,7 @@
 
 CogniCare AI is an AI-driven cognitive engagement companion for elderly users, built as an MVP for the **AICTE | IBM SkillsBuild AI Automation & Intelligent Solutions Internship (BharatCares)**, addressing **UN SDG 3: Good Health & Well-being**.
 
-Originally a local desktop application, the system has been re-architected into a scalable, secure, full-stack web application with an **async Celery pipeline**. It engages elders with daily memory-prompting questions (via WhatsApp), analyzes spoken/typed responses for emotional/cognitive signals, extracts long-term memories (RAG), and recommends personalized offline activities — while giving caregivers secure, authenticated visibility into historical trends via a Next.js dashboard.
+Originally a local desktop application, the system has been re-architected into a scalable, secure, full-stack web application with an **async Celery pipeline**. It engages elders with daily memory-prompting questions (via **Telegram**), analyzes spoken/typed responses for emotional/cognitive signals, extracts long-term memories (RAG), and recommends personalized offline activities — while giving caregivers secure, authenticated visibility into historical trends via a Next.js dashboard.
 
 ---
 
@@ -42,8 +42,8 @@ Originally a local desktop application, the system has been re-architected into 
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Elder      │────▶│  Twilio      │────▶│  FastAPI Webhook│
-│  (WhatsApp) │     │  WhatsApp    │     │  /webhooks/     │
+│  Elder      │────▶│  Telegram    │────▶│  FastAPI Webhook│
+│  (Telegram) │     │  Bot API     │     │  /webhooks/     │
 └─────────────┘     └──────────────┘     └────────┬────────┘
                                                    │
                             ┌──────────────────────┘
@@ -105,14 +105,15 @@ Managed via SQL migrations in `backend/database/migrations/`:
 |-----------|-------------|
 | `0001_initial_schema.sql` | Legacy (ignored) |
 | `0002_cognicare_v2_schema.sql` | Core V2 tables + RLS policies |
-| `0003_add_telegram_chat_id.sql` | Telegram demo elder support |
+| `0003_add_telegram_chat_id.sql` | Telegram demo elder support (chat_id) |
+| `0004_telegram_production.sql` | Telegram production elder support (user_id + deep-link) |
 
 **Core tables:**
 
 | Table | Purpose |
 |-------|---------|
-| `elder_profiles` | Elder config: name, language, timezone, proximity, mobility, `cycle_day` (1-7), `telegram_chat_id` (nullable, unique) |
-| `daily_interactions` | One row per scheduled question: `elder_id`, `domain`, `question`, `raw_response`, `transcript_source`, `language`, `twilio_message_sid` (idempotency key) |
+| `elder_profiles` | Elder config: name, language, timezone, proximity, mobility, `cycle_day` (1-7), `telegram_chat_id` (nullable, unique, demo), `telegram_user_id` (nullable, unique, production), `onboarding_method` ('demo' \| 'production') |
+| `daily_interactions` | One row per scheduled question: `elder_id`, `domain`, `question`, `raw_response`, `transcript_source`, `language`, `twilio_message_sid` (idempotency key, reused for `tg:<chat>:<msg>`) |
 | `interaction_insights` | Evaluator output: `sentiment_label`, `sentiment_score`, `engagement_level`, `engagement_score`, `response_depth`, `topics[]`, `safety_flag` |
 | `memories` | `pgvector` (384-dim) long-term memories: `elder_id`, `content`, `embedding`, `source_interaction_id`, `tags[]` |
 | `recommendations` | Coordinator output for caregiver dashboard: `recommendation_text`, `reason`, `status` (pending/done/dismissed/timed_out) |
@@ -123,11 +124,19 @@ Managed via SQL migrations in `backend/database/migrations/`:
 
 ---
 
-## Channels: Telegram (Demo) vs WhatsApp (Production)
+## Channels: Telegram (Production + Demo)
 
-| Aspect | Telegram Bot (Recruiter Demo) | WhatsApp (Elder Production) |
-|--------|-------------------------------|----------------------------|
-| **Access** | Public `t.me/YourBot` — anyone can start | Pre-registered test numbers only (Twilio trial) |
+| Aspect | Telegram Bot (Production Elder) | Telegram Bot (Recruiter Demo) |
+|--------|--------------------------------|-------------------------------|
+| **Access** | Deep-link `t.me/YourBot?start=elder_<uuid>` | Public `t.me/YourBot` |
+| **Elder onboarding** | Caregiver creates elder → shares deep-link | Auto-provisioned on first `/start` |
+| **Elder identity** | `telegram_user_id` (from `message.from.id`) | `telegram_chat_id` (from `message.chat.id`) |
+| **`onboarding_method`** | `production` | `demo` |
+| **Messaging** | Freeform, bidirectional, companion replies | Freeform, bidirectional, companion replies |
+| **Cost** | **Free** (Bot API) | **Free** (Bot API) |
+| **Template rules** | **None** | **None** |
+| **Voice notes** | ✅ Supported (Whisper) | ✅ Supported (Whisper) |
+| **Scheduled questions** | ✅ Celery Beat at `preferred_interaction_time` | ❌ Not scheduled (on-demand only) |e/YourBot` — anyone can start | Pre-registered test numbers only (Twilio trial) |
 | **Auth** | Auto-provisions demo elder keyed by `chat_id` | Elder profiles created by caregiver onboarding |
 | **Messaging** | Freeform, bidirectional | Template-only (Twilio trial sender `+17372212163`) |
 | **Template** | N/A | `TWILIO_TEMPLATE_CONTENT_SID=HXfe5ab5f00277942d4d4200328b4d403c` (Appointment Reminders) |
@@ -145,8 +154,7 @@ Managed via SQL migrations in `backend/database/migrations/`:
 - Supabase project (PostgreSQL + `pgvector` extension)
 - Groq API key (LLM + Whisper)
 - Hugging Face API key (embeddings)
-- Twilio account (WhatsApp) — optional for local dev
-- Telegram bot token (from @BotFather) — for demo channel
+- Telegram bot token (from @BotFather) — production + demo channel
 
 ---
 
@@ -165,6 +173,7 @@ cp .env.example .env
 # In Supabase Dashboard → SQL Editor, run:
 # backend/database/migrations/0002_cognicare_v2_schema.sql
 # backend/database/migrations/0003_add_telegram_chat_id.sql
+# backend/database/migrations/0004_telegram_production.sql
 ```
 
 **3. Start local stack:**
@@ -244,16 +253,6 @@ GROQ_WHISPER_MODEL=whisper-large-v3-turbo
 HUGGINGFACE_API_KEY=hf_your_token
 
 # =============================================================================
-# Twilio WhatsApp (elder channel)
-# =============================================================================
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your-auth-token
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
-TWILIO_WEBHOOK_URL=https://your-tunnel.trycloudflare.com/webhooks/twilio/inbound
-TWILIO_VALIDATE_SIGNATURE=true
-TWILIO_TEMPLATE_CONTENT_SID=HXfe5ab5f00277942d4d4200328b4d403c
-
-# =============================================================================
 # Celery / Redis
 # =============================================================================
 # Local: redis://redis:6379/0 (docker-compose overrides)
@@ -264,12 +263,15 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 CELERY_TIMEZONE=Asia/Kolkata
 
 # =============================================================================
-# Telegram Bot (recruiter demo channel)
+# Telegram Bot (production + recruiter demo channel)
 # =============================================================================
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF-your-token
 TELEGRAM_WEBHOOK_URL=https://cognicare-backend.onrender.com/webhooks/telegram/inbound
 TELEGRAM_WEBHOOK_SECRET=your-random-secret-string
 TELEGRAM_VALIDATE_SECRET=true
+TELEGRAM_DEMO_CAREGIVER_ID=uuid-from-supabase-auth-users-table
+TELEGRAM_BOT_USERNAME=CogniCareBot
+```T=true
 TELEGRAM_DEMO_CAREGIVER_ID=uuid-from-supabase-auth-users-table
 ```
 

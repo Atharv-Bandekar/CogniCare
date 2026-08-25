@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database.db import init_db
 from backend.api.routes import elders
-from backend.webhooks import twilio_webhook
 from backend.webhooks import telegram_webhook
 from backend.api.routes import recommendations
 
@@ -32,7 +31,7 @@ async def lifespan(app: FastAPI):
 # Initialize the FastAPI instance
 app = FastAPI(
     title="CogniCare AI API",
-    description="Multi-Agent Backend for Cognitive Engagement",
+    description="Multi-Agent Backend for Cognitive Engagement (Telegram-only)",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -49,5 +48,9 @@ app.add_middleware(
 # Mount the modular API routes for V2
 app.include_router(elders.router, prefix="/api/elders", tags=["Elders"])
 app.include_router(recommendations.router, prefix="/api", tags=["Recommendations"])
-app.include_router(twilio_webhook.router, prefix="/webhooks", tags=["Twilio Webhooks"])
 app.include_router(telegram_webhook.router, prefix="/webhooks", tags=["Telegram Webhook"])
+
+# Twilio WhatsApp webhook removed for Telegram-only deployment.
+# To re-enable: uncomment import and router mount below, add TWILIO_* env vars.
+# from backend.webhooks import twilio_webhook
+# app.include_router(twilio_webhook.router, prefix="/webhooks", tags=["Twilio Webhooks"])

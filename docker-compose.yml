@@ -5,8 +5,9 @@
 # All three app services share one image (built once, reused). Secrets and
 # config come from your .env file (copy it from .env.example first).
 #
-# NOTE: Twilio must reach the API from the public internet, so you also need a
-# tunnel (cloudflared / ngrok) pointing at localhost:8000 — see docs/LOCAL_SETUP.md.
+# NOTE: Telegram webhook must reach the API from the public internet, so you also
+# need a tunnel (cloudflared / ngrok) pointing at localhost:8000 — see
+# docs/LOCAL_SETUP.md.
 
 services:
   redis:

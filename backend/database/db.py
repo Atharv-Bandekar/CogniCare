@@ -51,6 +51,35 @@ def update_elder_profile(elder_id: str, data: dict) -> dict:
     response = supabase.table('elder_profiles').update(data).eq('id', elder_id).execute()
     return response.data[0]
 
+
+def link_elder_to_telegram_user(elder_id: str, telegram_user_id: int | str, telegram_chat_id: int | str | None = None) -> dict:
+    """
+    Links an existing elder profile to a Telegram user (production onboarding).
+
+    Called when elder taps deep-link t.me/YourBot?start=elder_<uuid>.
+    Sets telegram_user_id, optional telegram_chat_id, and onboarding_method='production'.
+
+    Args:
+        elder_id: Elder profile UUID
+        telegram_user_id: Telegram numeric user ID (from `message.from.id`)
+        telegram_chat_id: Optional chat ID (for group/context tracking)
+
+    Returns:
+        Updated elder profile dict.
+    """
+    update_data = {
+        'telegram_user_id': str(telegram_user_id),
+        'onboarding_method': 'production'
+    }
+    if telegram_chat_id is not None:
+        update_data['telegram_chat_id'] = str(telegram_chat_id)
+
+    response = supabase.table('elder_profiles').update(update_data).eq('id', elder_id).execute()
+    if not response.data:
+        raise ValueError(f"Elder {elder_id} not found")
+    return response.data[0]
+
+
 def get_elder_by_whatsapp_number(whatsapp_number: str) -> dict | None:
     """
     Resolves an elder profile from an inbound WhatsApp number.
@@ -64,7 +93,7 @@ def get_elder_by_whatsapp_number(whatsapp_number: str) -> dict | None:
 
 def get_elder_by_telegram_chat_id(chat_id: str) -> dict | None:
     """
-    Resolves an elder profile from a Telegram chat id.
+    Resolves an elder profile from a Telegram chat id (DEMO channel).
 
     The Telegram bot is the recruiter-facing demo channel: unlike the WhatsApp
     trial sender (template-only, pre-registered testers), anyone with the bot's
@@ -73,6 +102,25 @@ def get_elder_by_telegram_chat_id(chat_id: str) -> dict | None:
     """
     response = supabase.table('elder_profiles').select('*').eq('telegram_chat_id', str(chat_id)).execute()
     return response.data[0] if response.data else None
+
+
+def get_elder_by_telegram_user_id(user_id: int | str) -> dict | None:
+    """
+    Resolves an elder profile from a Telegram numeric user ID (PRODUCTION channel).
+
+    Production elders are linked via deep-link onboarding: caregiver creates elder
+    → gets t.me/YourBot?start=elder_<uuid> → elder taps → bot receives user_id
+    → links telegram_user_id to elder profile. See migration 0004.
+
+    Args:
+        user_id: Telegram's numeric user ID (from `message.from.id`)
+
+    Returns:
+        Elder profile dict or None if not found.
+    """
+    response = supabase.table('elder_profiles').select('*').eq('telegram_user_id', str(user_id)).execute()
+    return response.data[0] if response.data else None
+
 
 def get_all_elders() -> list[dict]:
     """Fetches every elder profile. Used by the Celery beat fan-out tasks."""
