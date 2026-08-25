@@ -20,3 +20,5 @@ services:
   - type: redis
     name: cognicare-redis
     plan: free
+    ipAllowList:
+      - source: "0.0.0.0/0"
