@@ -51,6 +51,22 @@ def update_elder_profile(elder_id: str, data: dict) -> dict:
     response = supabase.table('elder_profiles').update(data).eq('id', elder_id).execute()
     return response.data[0]
 
+def get_elder_by_whatsapp_number(whatsapp_number: str) -> dict | None:
+    """
+    Resolves an elder profile from an inbound WhatsApp number.
+
+    Twilio sends numbers as 'whatsapp:+9198...'; we strip that prefix and match
+    on the stored E.164 number so the inbound worker can identify the sender.
+    """
+    normalized = (whatsapp_number or "").replace("whatsapp:", "").strip()
+    response = supabase.table('elder_profiles').select('*').eq('whatsapp_number', normalized).execute()
+    return response.data[0] if response.data else None
+
+def get_all_elders() -> list[dict]:
+    """Fetches every elder profile. Used by the Celery beat fan-out tasks."""
+    response = supabase.table('elder_profiles').select('*').execute()
+    return response.data
+
 
 # ==========================================
 # DAILY INTERACTIONS
@@ -70,6 +86,25 @@ def get_interactions_by_elder(elder_id: str, limit: int = 20) -> list[dict]:
     """Fetches recent interaction history for a specific elder."""
     response = supabase.table('daily_interactions').select('*').eq('elder_id', elder_id).order('created_at', desc=True).limit(limit).execute()
     return response.data
+
+def update_daily_interaction(interaction_id: str, data: dict) -> dict:
+    """Updates an interaction in place (e.g. attaching the elder's raw_response)."""
+    response = supabase.table('daily_interactions').update(data).eq('id', interaction_id).execute()
+    return response.data[0] if response.data else {}
+
+def get_open_interaction_for_elder(elder_id: str) -> dict | None:
+    """
+    Finds the most recent interaction for an elder that is still awaiting a reply
+    (raw_response IS NULL). The inbound worker attaches the elder's answer to this row.
+    """
+    response = supabase.table('daily_interactions') \
+        .select('*') \
+        .eq('elder_id', elder_id) \
+        .is_('raw_response', 'null') \
+        .order('created_at', desc=True) \
+        .limit(1) \
+        .execute()
+    return response.data[0] if response.data else None
 
 
 # ==========================================

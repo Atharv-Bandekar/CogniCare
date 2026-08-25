@@ -43,9 +43,10 @@ def test_happy_path_assembles_full_record():
     ]
     insights = [{"engagement_level": "high", "topics": ["gardening"], "safety_flag": False}]
     recommendations = [
-        {"created_at": "2026-08-18T10:00:00", "status": "acted"},
+        # Statuses must be values the schema's CHECK constraint actually permits.
+        {"created_at": "2026-08-18T10:00:00", "status": "done"},
         {"created_at": "2026-08-19T10:00:00", "status": "pending"},
-        {"created_at": "2026-07-01T10:00:00", "status": "acted"},  # out of window
+        {"created_at": "2026-07-01T10:00:00", "status": "done"},  # out of window
     ]
 
     p_profile, p_inter, p_ins, p_rec, p_insert, p_sum = _patches(
