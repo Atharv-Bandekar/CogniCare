@@ -179,15 +179,18 @@ def process_reply_pipeline(
         logger.error("Failed to persist insight for interaction %s: %s", interaction_id, exc)
 
     # 5. Extract and store long-term memories (best-effort).
-    store_memories(elder_id, analysis_text, insight.get("topics"), interaction_id)
+    stored_count = store_memories(elder_id, analysis_text, insight.get("topics"), interaction_id)
 
-    # 6. Generate the caregiver recommendation.
+    # 6. Generate the caregiver recommendation — pass retrieved memories for variety.
     try:
+        # Fetch memories just stored + recent ones for context
+        from backend.rag.memory_store import search_memories
+        recent_memories = search_memories(elder_id, analysis_text, top_k=5) or []
         recommendation = generate_recommendation(
             elder=elder,
             evaluator_output=insight,
             domain=interaction.get("domain", ""),
-            memories=[],
+            memories=recent_memories,
             weather_summary=weather_for(elder),
         )
         insert_recommendation(
