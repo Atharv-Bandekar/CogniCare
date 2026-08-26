@@ -75,7 +75,17 @@ class InterviewerAgent:
         user_prompt = "Generate today's question."
 
         # Reusing the existing base LLM caller utility[cite: 2].
-        result = call_llm(system_prompt, user_prompt, max_tokens=250)
+        result = call_llm(system_prompt, user_prompt, max_tokens=400)
+
+        # Ensure question is complete (ends with ? or equivalent)
+        if result and not result.rstrip().endswith(('?', '؟', '？', '।', '?', '？')):
+            logger.warning("InterviewerAgent returned incomplete question: %s", result[:100])
+            # Try once more with explicit instruction
+            result = call_llm(
+                system_prompt + "\n\nIMPORTANT: End the question with a question mark (?).",
+                user_prompt,
+                max_tokens=400
+            )
         
         if result:
             return result.strip().strip('"')

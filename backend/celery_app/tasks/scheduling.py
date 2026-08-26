@@ -203,12 +203,12 @@ def send_daily_question(self, elder_id: str):
     interaction_id = (interaction or {}).get("id")
 
     # Send via Telegram (freeform, no template needed)
-    # Production elders have telegram_chat_id set via deep-link onboarding
-    # Demo elders have telegram_chat_id set via auto-provisioning
-    chat_id = elder.get("telegram_chat_id")
+    # Production elders: use telegram_user_id (private chat = user_id)
+    # Demo elders: use telegram_chat_id (auto-provisioned)
+    chat_id = elder.get("telegram_user_id") or elder.get("telegram_chat_id")
     if not chat_id:
-        logger.error("Elder %s has no telegram_chat_id; cannot send daily question.", elder_id)
-        raise self.retry(exc=RuntimeError("No telegram_chat_id for elder"))
+        logger.error("Elder %s has no telegram_user_id or telegram_chat_id; cannot send daily question.", elder_id)
+        raise self.retry(exc=RuntimeError("No Telegram ID for elder"))
 
     sent = send_telegram_message(chat_id, question)
     if sent is None:

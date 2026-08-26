@@ -49,6 +49,7 @@ from backend.celery_app.tasks.shared_helpers import (
     handle_escalation,
     weather_for,
     process_reply_pipeline,
+    LANGUAGE_NAMES,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ def _resolve_elder(
             elder_id = match.group(1)
             logger.info("Production onboarding: linking user %s to elder %s", user_id, elder_id)
             try:
-                elder = link_elder_to_telegram_user(elder_id, user_id, chat_id)
+                elder = link_elder_to_telegram_user(elder_id, user_id)
                 logger.info("Successfully linked elder %s to Telegram user %s", elder_id, user_id)
                 return elder, 'production'
             except Exception as exc:
@@ -239,6 +240,9 @@ def _ask_new_question(elder: dict, chat_id, mode: str) -> bool:
     except Exception as exc:
         logger.error("Failed to open interaction for elder %s: %s", elder_id, exc)
 
+    # For on-demand questions (via /start), use the chat_id from the payload
+    # Production elders: chat_id == user_id (private chat)
+    # Demo elders: chat_id is the chat they started
     sent = send_telegram_message(chat_id, question)
 
     try:
@@ -326,7 +330,19 @@ def process_telegram_update(payload: dict):
             send_telegram_message(chat_id, UNCLEAR_AUDIO_REPLY)
         return {"status": "empty_transcript", "source": source, "mode": mode}
 
-    insight = _process_reply(elder, open_interaction, transcript, source, external_id, chat_id)
+    # Use shared pipeline (includes companion reply)
+    def send_reply(chat_id, text):
+        send_telegram_message(chat_id, text)
+
+    insight = process_reply_pipeline(
+        elder=elder,
+        interaction=open_interaction,
+        transcript=transcript,
+        source=source,
+        external_id=external_id,
+        chat_id=chat_id,
+        send_reply_fn=send_reply
+    )
 
     # Keep the conversation flowing: ask the next question after acknowledging.
     _ask_new_question(elder, chat_id, mode)

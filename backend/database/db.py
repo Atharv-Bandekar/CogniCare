@@ -52,17 +52,20 @@ def update_elder_profile(elder_id: str, data: dict) -> dict:
     return response.data[0]
 
 
-def link_elder_to_telegram_user(elder_id: str, telegram_user_id: int | str, telegram_chat_id: int | str | None = None) -> dict:
+def link_elder_to_telegram_user(elder_id: str, telegram_user_id: int | str) -> dict:
     """
     Links an existing elder profile to a Telegram user (production onboarding).
 
     Called when elder taps deep-link t.me/YourBot?start=elder_<uuid>.
-    Sets telegram_user_id, optional telegram_chat_id, and onboarding_method='production'.
+    Sets telegram_user_id and onboarding_method='production'.
+
+    NOTE: Does NOT set telegram_chat_id — in Telegram private chats, chat_id == user_id,
+    so setting both would violate the unique constraint from migration 0003.
+    Production daily questions use telegram_user_id as the chat_id for sending.
 
     Args:
         elder_id: Elder profile UUID
         telegram_user_id: Telegram numeric user ID (from `message.from.id`)
-        telegram_chat_id: Optional chat ID (for group/context tracking)
 
     Returns:
         Updated elder profile dict.
@@ -71,8 +74,6 @@ def link_elder_to_telegram_user(elder_id: str, telegram_user_id: int | str, tele
         'telegram_user_id': str(telegram_user_id),
         'onboarding_method': 'production'
     }
-    if telegram_chat_id is not None:
-        update_data['telegram_chat_id'] = str(telegram_chat_id)
 
     response = supabase.table('elder_profiles').update(update_data).eq('id', elder_id).execute()
     if not response.data:

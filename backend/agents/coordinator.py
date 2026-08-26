@@ -9,6 +9,7 @@ from groq import Groq
 
 logger = logging.getLogger(__name__)
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
 # Diagnostic words the AI is strictly forbidden from outputting
 FORBIDDEN_WORDS = ["dementia", "depression", "alzheimer", "cognitive impairment", "diagnose", "clinical"]
@@ -49,7 +50,7 @@ def generate_recommendation(elder: dict, evaluator_output: dict, domain: str, me
 
     try:
         response = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model=GROQ_MODEL,
             messages=[{"role": "system", "content": system_prompt}],
             response_format={"type": "json_object"},
             temperature=0.3
