@@ -1,7 +1,7 @@
 // frontend/src/components/features/DashboardTab.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { DashboardTabProps } from "../../types";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -165,7 +165,7 @@ export default function DashboardTab({ session }: DashboardTabProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const authHeader = { "Authorization": `Bearer ${session?.access_token}` };
+  const authHeader = useMemo(() => ({ "Authorization": `Bearer ${session?.access_token}` }), [session?.access_token]);
 
   const loadElders = useCallback(async () => {
     try {
