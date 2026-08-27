@@ -30,7 +30,7 @@ export async function getRecommendations(
 ): Promise<Recommendation[]> {
   const params = new URLSearchParams();
   if (status) params.append("status", status);
-  const res = await fetch(`${API_URL}/api/${elderId}/recommendations?${params}`, {
+  const res = await fetch(`${API_URL}/api/elders/${elderId}/recommendations?${params}`, {
     headers: authHeader(token),
   });
   if (!res.ok) throw new Error("Failed to fetch recommendations");
@@ -42,10 +42,10 @@ export async function markDone(
   caregiverUserId: string,
   token: string
 ): Promise<{ status: string }> {
-  const res = await fetch(`${API_URL}/api/recommendations/${recommendationId}/done`, {
+  const params = new URLSearchParams({ caregiver_user_id: caregiverUserId });
+  const res = await fetch(`${API_URL}/api/elders/recommendations/${recommendationId}/done?${params}`, {
     method: "POST",
-    headers: { ...authHeader(token), "Content-Type": "application/json" },
-    body: JSON.stringify({ caregiver_user_id: caregiverUserId }),
+    headers: authHeader(token),
   });
   if (!res.ok) throw new Error("Failed to mark done");
   return res.json();
@@ -56,10 +56,10 @@ export async function markDismissed(
   caregiverUserId: string,
   token: string
 ): Promise<{ status: string }> {
-  const res = await fetch(`${API_URL}/api/recommendations/${recommendationId}/dismiss`, {
+  const params = new URLSearchParams({ caregiver_user_id: caregiverUserId });
+  const res = await fetch(`${API_URL}/api/elders/recommendations/${recommendationId}/dismiss?${params}`, {
     method: "POST",
-    headers: { ...authHeader(token), "Content-Type": "application/json" },
-    body: JSON.stringify({ caregiver_user_id: caregiverUserId }),
+    headers: authHeader(token),
   });
   if (!res.ok) throw new Error("Failed to dismiss");
   return res.json();
@@ -71,7 +71,7 @@ export async function submitSuggestion(
   caregiverUserId: string,
   token: string
 ): Promise<{ status: string }> {
-  const res = await fetch(`${API_URL}/api/recommendations/${recommendationId}/suggest`, {
+  const res = await fetch(`${API_URL}/api/elders/recommendations/${recommendationId}/suggest`, {
     method: "POST",
     headers: { ...authHeader(token), "Content-Type": "application/json" },
     body: JSON.stringify({ suggestion_text: suggestionText, caregiver_user_id: caregiverUserId }),
