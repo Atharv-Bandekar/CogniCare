@@ -11,15 +11,6 @@ export interface AppSettings {
 }
 
 /**
- * Props for the CheckIn feature tab
- */
-export interface CheckInTabProps {
-  language: string;
-  t: Record<string, string>;
-  session: any;
-}
-
-/**
  * Props for the Dashboard feature tab
  */
 export interface DashboardTabProps {
