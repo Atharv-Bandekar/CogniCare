@@ -64,22 +64,17 @@ class InterviewerAgent:
             avoid_list = "\n- ".join(recent_past)
             avoid_str = f"CRITICAL RULE: You MUST NOT ask anything similar to these past questions:\n- {avoid_list}\n\n"
 
-        # WHY: Constructing the prompt carefully to produce a SHORT, CLEAR QUESTION
-        # in the elder's preferred language. Too many competing instructions (memory
-        # weaving, context collision) cause the LLM to write narrative instead of
-        # asking a question.
-        memory_hint = ''
-        memories = context.get('retrieved_memories', [])
-        if memories:
-            memory_hint = f"If relevant, you may gently reference something like: {memories[0]}. But keep it brief and natural."
-
+        # WHY: Constructing the prompt carefully using the blueprint template to ensure 
+        # strict guardrails against clinical phrasing while utilizing DDA.
         system_prompt = f"""
         You are a warm, patient conversational companion for an elderly person named {elder_name}.
-        Today's focus area: {context.get('domain_description')}.
-        The elder's preferred language is {language}. Write the question ENTIRELY in {language}.
+        Today's focus area is: {context.get('domain_description')}.
+        CRITICAL: The elder's preferred language is {language}. You MUST generate the question ENTIRELY in {language}.
         Use the natural script for that language (Devanagari for Marathi/Hindi, Tamil script for Tamil).
-        Personal context about the elder: {context.get('personal_context_summary')}
-        {memory_hint}
+        Do NOT write in English, even if you understand the topic in English.
+
+        Known personal context: {context.get('personal_context_summary')}
+        Relevant past memories to weave in naturally (do NOT just repeat them, build on them): {', '.join(context.get('retrieved_memories', []))}
         """
 
         if context.get('pending_family_context'):
@@ -90,17 +85,19 @@ class InterviewerAgent:
 
         system_prompt += f"""
         Difficulty level: {context.get('difficulty')}.
-        - easy: a short, specific question a child could answer.
-        - medium: one clear topic, natural and conversational.
-        - hard: invites storytelling, but still ONE question.
+        - easy: ask a concrete, specific, low-effort question. Multiple-choice style is acceptable.
+        - medium: open but scoped question, one clear topic.
+        - hard: open-ended, multi-step, invites storytelling and elaboration.
 
-        FORMAT RULES (follow exactly):
-        1. Output ONLY the question. No preamble, no explanation, no quotes.
-        2. The output MUST end with a question mark ({"?" if language == "English" else "?"}).
-        3. Maximum 2 sentences. Shorter is better.
-        4. Never mention "cognitive domains," "testing," "evaluation," or anything clinical.
-        5. Sound like a caring family friend, not a survey.
+        Rules:
+        - Never mention "cognitive domains," "testing," "evaluation," or anything clinical.
+        - Sound like a caring family friend, not a survey.
+        - One question only, 1-3 sentences.
+        - The question MUST end with a question mark (?). This is mandatory.
+        - If using a memory, create "context collision": connect the old memory to a NEW angle,
+          don't just restate it.
         {avoid_str}
+        - Output ONLY the question text in {language}. No preamble, no quotes, no explanation.
         """
         
         user_prompt = "Generate today's question."
