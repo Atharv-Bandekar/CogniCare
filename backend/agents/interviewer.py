@@ -1,6 +1,9 @@
+import logging
 import random
 from typing import Dict, Any, List
 from .base import call_llm
+
+logger = logging.getLogger(__name__)
 
 class InterviewerAgent:
     """

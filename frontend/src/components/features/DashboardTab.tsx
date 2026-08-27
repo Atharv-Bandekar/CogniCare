@@ -41,32 +41,6 @@ const XCircle = ({ className, size }: IconProps) => (
   </svg>
 );
 
-// Icons for deep link section
-const ExternalLink = ({ className, size }: IconProps) => (
-  <svg className={iconClass({ className, size })} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    <polyline points="15 3 21 3 21 9" />
-    <line x1="10" y1="14" x2="21" y2="3" />
-  </svg>
-);
-const Copy = ({ className, size }: IconProps) => (
-  <svg className={iconClass({ className, size })} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
-const Check = ({ className, size }: IconProps) => (
-  <svg className={iconClass({ className, size })} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-const Loader2 = ({ className, size }: IconProps) => (
-  <svg className={iconClass({ className, size })} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <circle cx="12" cy="12" r="10" />
-    <path d="M12 6v6l4 2" />
-  </svg>
-);
-
 const MessageSquare = ({ className, size }: IconProps) => (
   <svg className={iconClass({ className, size })} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -212,7 +186,7 @@ export default function DashboardTab({ session }: DashboardTabProps) {
 
   const loadRecommendations = useCallback(async (elderId: string) => {
     try {
-      const res = await fetch(`${apiUrl}/api/${elderId}/recommendations`, { headers: authHeader });
+      const res = await fetch(`${apiUrl}/api/elders/${elderId}/recommendations`, { headers: authHeader });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Unknown error" }));
         console.error("Failed to load recommendations:", err);
@@ -291,57 +265,43 @@ export default function DashboardTab({ session }: DashboardTabProps) {
   }, [apiUrl, authHeader, loadRecommendations, loadHistory, loadWeeklyReports]);
 
   const handleDeleteElder = useCallback(async (elderId: string) => {
-    setIsDeleting(true);
-    try {
-      const res = await fetch(`${apiUrl}/api/elders/${elderId}`, {
-        method: "DELETE",
-        headers: authHeader,
-      });
-      if (!res.ok) {
-        let errMsg = "Failed to delete elder";
-        try {
-          const err = await res.json();
-          // Handle case where error might be an empty object
-          if (err && typeof err === 'object' && Object.keys(err).length > 0) {
-            errMsg = err.detail || err.message || JSON.stringify(err);
-          } else {
-            errMsg = `Server error: ${res.status} ${res.statusText}`;
-          }
-        } catch {
+    const res = await fetch(`${apiUrl}/api/elders/${elderId}`, {
+      method: "DELETE",
+      headers: authHeader,
+    });
+    if (!res.ok) {
+      let errMsg = "Failed to delete elder";
+      try {
+        const err = await res.json();
+        if (err && typeof err === 'object' && Object.keys(err).length > 0) {
+          errMsg = err.detail || err.message || JSON.stringify(err);
+        } else {
           errMsg = `Server error: ${res.status} ${res.statusText}`;
         }
-        console.error("Failed to delete elder:", errMsg);
-        alert(errMsg); // Temporary - replace with toast in production
-        return;
+      } catch {
+        errMsg = `Server error: ${res.status} ${res.statusText}`;
       }
-      const data = await res.json();
-      console.log("Delete response:", data);
-      // Clear selection if deleted elder was selected
-      setSelectedElder(null);
-      // Reload elders list
-      loadElders();
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : "Network error - failed to delete elder";
-      console.error("Failed to delete elder", error);
-      alert(errMsg); // Temporary - replace with toast in production
-    } finally {
-      setIsDeleting(false);
+      throw new Error(errMsg);
     }
-  }, [apiUrl, authHeader, loadElders]);
+    return res.json();
+  }, [apiUrl, authHeader]);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (deleteConfirm) {
-      try {
-        await handleDeleteElder(deleteConfirm.elderId);
-      } catch (error) {
-        // Error already handled in handleDeleteElder (alert shown)
-        console.error("Delete confirmation error:", error);
-      } finally {
-        // Always close modal to prevent stuck loading state
-        setDeleteConfirm(null);
-      }
+    if (!deleteConfirm) return;
+    setIsDeleting(true);
+    try {
+      await handleDeleteElder(deleteConfirm.elderId);
+      setSelectedElder(null);
+      loadElders();
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Failed to delete elder";
+      console.error("Delete error:", errMsg);
+      alert(errMsg);
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirm(null);
     }
-  }, [deleteConfirm, handleDeleteElder]);
+  }, [deleteConfirm, handleDeleteElder, loadElders]);
 
   // Force-close modal if it gets stuck (safety net for edge cases)
   useEffect(() => {
