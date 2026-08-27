@@ -2,31 +2,40 @@
 import { ButtonHTMLAttributes, ReactNode } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "success" | "danger";
+  variant?: "primary" | "secondary" | "success" | "danger" | "ghost";
+  size?: "sm" | "md" | "lg";
   children: ReactNode;
   className?: string;
 }
 
-export function Button({ 
-  variant = "primary", 
-  children, 
-  className = "", 
-  ...props 
+export function Button({
+  variant = "primary",
+  size = "md",
+  children,
+  className = "",
+  ...props
 }: ButtonProps) {
-  
+
+  const sizeStyles = {
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-6 py-4 text-base",
+    lg: "px-8 py-5 text-lg"
+  };
+
   // These styles apply to ALL buttons (padding, rounded corners, transitions)
-  const baseStyles = "px-6 py-4 rounded-xl font-bold transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed";
-  
+  const baseStyles = "rounded-xl font-bold transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed";
+
   // These styles change based on the 'variant' prop you pass
   const variants = {
     primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm",
     secondary: "bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white",
     success: "bg-green-600 hover:bg-green-700 text-white shadow-sm",
-    danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm"
+    danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm",
+    ghost: "bg-transparent hover:bg-slate-800 text-slate-300 border border-slate-600"
   };
 
   return (
-    <button className={`${baseStyles} ${variants[variant]} ${className}`} {...props}>
+    <button className={`${baseStyles} ${sizeStyles[size]} ${variants[variant]} ${className}`} {...props}>
       {children}
     </button>
   );

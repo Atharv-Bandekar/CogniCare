@@ -13,6 +13,7 @@ from backend.database.db import init_db
 from backend.api.routes import elders
 from backend.webhooks import telegram_webhook
 from backend.api.routes import recommendations
+from backend.api.routes import reports
 
 """
 Main Application Entry Point
@@ -47,7 +48,8 @@ app.add_middleware(
 
 # Mount the modular API routes for V2
 app.include_router(elders.router, prefix="/api/elders", tags=["Elders"])
-app.include_router(recommendations.router, prefix="/api", tags=["Recommendations"])
+app.include_router(recommendations.router, prefix="/api/elders", tags=["Recommendations"])
+app.include_router(reports.router, prefix="/api/elders", tags=["Weekly Reports"])
 app.include_router(telegram_webhook.router, prefix="/webhooks", tags=["Telegram Webhook"])
 
 # Twilio WhatsApp webhook removed for Telegram-only deployment.

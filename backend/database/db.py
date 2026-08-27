@@ -52,6 +52,14 @@ def update_elder_profile(elder_id: str, data: dict) -> dict:
     return response.data[0]
 
 
+def delete_elder(elder_id: str) -> dict:
+    """Deletes an elder profile and all associated data (cascades via FK)."""
+    response = supabase.table('elder_profiles').delete().eq('id', elder_id).execute()
+    if not response.data:
+        raise ValueError(f"Elder {elder_id} not found")
+    return {"status": "deleted", "elder_id": elder_id}
+
+
 def link_elder_to_telegram_user(elder_id: str, telegram_user_id: int | str) -> dict:
     """
     Links an existing elder profile to a Telegram user (production onboarding).
@@ -68,17 +76,20 @@ def link_elder_to_telegram_user(elder_id: str, telegram_user_id: int | str) -> d
         telegram_user_id: Telegram numeric user ID (from `message.from.id`)
 
     Returns:
-        Updated elder profile dict.
+        Updated elder profile dict (FULL row, not just updated fields).
     """
     update_data = {
         'telegram_user_id': str(telegram_user_id),
         'onboarding_method': 'production'
     }
 
-    response = supabase.table('elder_profiles').update(update_data).eq('id', elder_id).execute()
-    if not response.data:
+    # First, update the record
+    update_response = supabase.table('elder_profiles').update(update_data).eq('id', elder_id).execute()
+    if not update_response.data:
         raise ValueError(f"Elder {elder_id} not found")
-    return response.data[0]
+
+    # Then fetch the FULL updated profile (update only returns modified columns)
+    return get_elder_profile(elder_id)
 
 
 def get_elder_by_whatsapp_number(whatsapp_number: str) -> dict | None:
@@ -279,7 +290,7 @@ def get_recommendations_by_elder(elder_id: str, status: str | None = None) -> li
     if status:
         query = query.eq('status', status)
     response = query.order('created_at', desc=True).execute()
-    return response.data
+    return response.data or []
 
 def get_pending_recommendations_older_than(hours: int) -> list[dict]:
     """Used by the 12-hour fallback Celery task to find timed-out recommendations."""

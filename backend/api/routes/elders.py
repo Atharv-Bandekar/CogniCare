@@ -103,6 +103,35 @@ def list_elders():
     """Lists all elder profiles (for demo/debug)."""
     return db.get_all_elders() or []
 
+@router.get("/{elder_id}/interactions")
+def get_elder_interactions(elder_id: str):
+    """Fetches interaction history with insights for an elder (for caregiver dashboard)."""
+    try:
+        interactions = db.get_interactions_by_elder(elder_id, limit=50)
+        if not interactions:
+            return {"history": []}
+
+        # Enrich with insights
+        interaction_ids = [i["id"] for i in interactions]
+        # Batch fetch insights for all interactions
+        insights_map = {}
+        if interaction_ids:
+            from backend.database.db import supabase
+            response = supabase.table('interaction_insights').select('*').in_('interaction_id', interaction_ids).execute()
+            for insight in response.data:
+                insights_map[insight["interaction_id"]] = insight
+
+        history = []
+        for interaction in interactions:
+            history.append({
+                **interaction,
+                "insight": insights_map.get(interaction["id"])
+            })
+
+        return {"history": history}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.patch("/{elder_id}")
 def update_elder(elder_id: str, updates: ElderUpdate):
     """Updates specific fields on an existing elder profile."""
@@ -114,5 +143,16 @@ def update_elder(elder_id: str, updates: ElderUpdate):
     try:
         updated_elder = db.update_elder_profile(elder_id, update_data)
         return updated_elder
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{elder_id}")
+def delete_elder(elder_id: str):
+    """Deletes an elder profile and all associated data (cascades via FK)."""
+    try:
+        return db.delete_elder(elder_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
