@@ -250,9 +250,8 @@ export default function DashboardTab({ session }: DashboardTabProps) {
       loadHistory(elder.id),
       loadWeeklyReports(elder.id),
     ]);
-    // Fetch deep-link for production elders
-    if (elder.onboarding_method === 'production') {
-      fetch(`${apiUrl}/api/elders/${elder.id}/deep-link`, { headers: authHeader })
+    // Fetch deep-link for the elder
+    fetch(`${apiUrl}/api/elders/${elder.id}/deep-link`, { headers: authHeader })
         .then(res => res.json())
         .then(data => {
           if (data.deep_link) {
@@ -260,7 +259,6 @@ export default function DashboardTab({ session }: DashboardTabProps) {
           }
         })
         .catch(console.error);
-    }
     setIsLoading(false);
   }, [apiUrl, authHeader, loadRecommendations, loadHistory, loadWeeklyReports]);
 
@@ -658,8 +656,8 @@ export default function DashboardTab({ session }: DashboardTabProps) {
       {/* Selected Elder Detail */}
       {selectedElder && (
         <>
-          {/* Deep Link for Production Elders (has telegram_user_id) */}
-          {selectedElder.telegram_user_id && (
+          {/* Deep Link for all elders — always show so caregiver can share it */}
+          {selectedElder.id && (
             <Card className="p-4 bg-blue-500/10 border-blue-500/30">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex items-center gap-3">
