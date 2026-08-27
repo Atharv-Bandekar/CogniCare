@@ -8,11 +8,48 @@ Originally a local desktop application, the system has been re-architected into 
 
 ---
 
+## 📸 App Screenshots
+
+> *Replace the placeholder images below with actual screenshots from your app.*
+
+| | |
+|---|---|
+| **Caregiver Dashboard** | **Elder Management** |
+| ![Caregiver Dashboard](screenshots/dashboard.png) | ![Add Elder via Telegram](screenshots/add-elder.png) |
+| **Telegram Bot — Multilingual Questions** | **Deep-Link Onboarding** |
+| ![Telegram Bot Conversation](screenshots/telegram-bot.png) | ![Deep Link Flow](screenshots/deep-link.png) |
+| **Recommendations & Feedback** | **Interaction History & Insights** |
+| ![Recommendations](screenshots/recommendations.png) | ![Interaction History](screenshots/interaction-history.png) |
+| **Weekly Report** | **Dark Mode UI** |
+| ![Weekly Report](screenshots/weekly-report.png) | ![Dark Mode](screenshots/dark-mode.png) |
+
+<details>
+<summary>📸 How to add screenshots</summary>
+
+1. Take screenshots of each screen (dashboard, telegram bot, etc.)
+2. Save them in a `screenshots/` folder at the project root
+3. Push to GitHub — the images will render automatically in the README
+
+Suggested screenshots to capture:
+- `dashboard.png` — Main caregiver dashboard with elder list
+- `add-elder.png` — "Add Elder via Telegram" form with language selector
+- `telegram-bot.png` — Telegram conversation showing multilingual questions
+- `deep-link.png` — Deep-link card in the dashboard
+- `recommendations.png` — Recommendation cards with Done/Dismiss/Suggest actions
+- `interaction-history.png` — Interaction history with sentiment & engagement badges
+- `weekly-report.png` — Weekly report summary
+- `dark-mode.png` — Full dashboard in dark mode
+
+</details>
+
+---
+
 ## Table of Contents
 - [Tech Stack](#tech-stack)
 - [Architecture Overview](#architecture-overview)
+- [Key Features](#key-features)
 - [Database Schema (V2)](#database-schema-v2)
-- [Channels: Telegram (Demo) vs WhatsApp (Production)](#channels-telegram-demo-vs-whatsapp-production)
+- [Channels: Telegram (Production + Demo)](#channels-telegram-production--demo)
 - [Installation & Setup](#installation--setup)
 - [Local Development (Docker)](#local-development-docker)
 - [Production Deployment (Render)](#production-deployment-render)
@@ -31,9 +68,9 @@ Originally a local desktop application, the system has been re-architected into 
 | **Backend API** | FastAPI, Python 3.11, Uvicorn |
 | **Async Pipeline** | Celery 5.3 + Redis (Upstash/Render), Celery Beat scheduler |
 | **Database & Auth** | Supabase (PostgreSQL + `pgvector`), Row Level Security |
-| **LLM (Cloud)** | Groq (`openai/gpt-oss-20b`, `whisper-large-v3-turbo`) |
+| **LLM (Cloud)** | Groq (`llama-3.3-70b-versatile`, `whisper-large-v3-turbo`) |
 | **Embeddings** | Hugging Face Inference Router (`sentence-transformers/all-MiniLM-L6-v2`, 384-dim) |
-| **Messaging** | Twilio WhatsApp (elder channel), Telegram Bot API (recruiter demo) |
+| **Messaging** | Telegram Bot API (production elder channel + recruiter demo) |
 | **Observability** | Structured logging, Render logs |
 
 ---
@@ -57,15 +94,15 @@ Originally a local desktop application, the system has been re-architected into 
          ▼                                         ▼                                         ▼
 ┌──────────────────┐                    ┌──────────────────┐                    ┌──────────────────┐
 │ scheduling queue │                    │   inbound queue  │                    │ fallback queue   │
-│ dispatch_daily_  │                    │ process_inbound_ │                    │ expire_stale_    │
-│ questions        │                    │ message          │                    │ recommendations  │
+│ dispatch_daily_  │                    │ process_telegram_│                    │ expire_stale_    │
+│ questions        │                    │ update           │                    │ recommendations  │
 └──────────────────┘                    └────────┬─────────┘                    └──────────────────┘
                                                  │
                     ┌────────────────────────────┼────────────────────────────┐
                     ▼                            ▼                            ▼
            ┌───────────────┐            ┌───────────────┐            ┌───────────────┐
            │ Interviewer   │            │  Evaluator    │            │ Coordinator   │
-           │ Agent         │            │  (Phase 3A)   │            │ Agent         │
+           │ Agent         │            │  Agent        │            │ Agent         │
            │ generate_     │            │ evaluate_     │            │ generate_     │
            │ question()    │            │ response()    │            │ recommendation()│
            └───────┬───────┘            └───────┬───────┘            └───────┬───────┘
@@ -89,11 +126,42 @@ Originally a local desktop application, the system has been re-architected into 
 
 **Key flows:**
 
-1. **Daily Question (scheduled):** Celery Beat → `dispatch_daily_questions` → `send_daily_question` (per elder) → Twilio template message → `daily_interactions` row opened
-2. **Inbound Reply (async):** Twilio webhook → enqueue `process_inbound_message` (idempotent on `MessageSid`) → transcribe (Whisper) → translate → evaluate → store insight → extract memories → generate recommendation → escalation check → advance `cycle_day`
-3. **Fallback Sweep (12h):** `expire_stale_recommendations` → pending → `timed_out`
-4. **Weekly Report (Mon 07:00):** `generate_all_weekly_reports` → 7-day aggregates → `weekly_reports` table
-5. **Telegram Demo (on-demand):** `/webhooks/telegram/inbound` → enqueue `process_telegram_update` → same agent pipeline → warm companion reply → next question
+1. **Caregiver Onboarding:** Dashboard → create elder (name, language, timezone) → get `t.me/Bot?start=elder_<uuid>` deep-link → share with elder
+2. **Elder Links via Telegram:** Elder taps deep-link → bot links `telegram_user_id` → welcome message + first question
+3. **Daily Questions (scheduled):** Celery Beat → `dispatch_daily_questions` → `send_daily_question` (per elder) → Telegram message in elder's language
+4. **Inbound Reply (async):** Telegram update → enqueue `process_telegram_update` → transcribe (Whisper, for voice notes) → translate → evaluate → store insight → extract memories → generate recommendation → companion reply → next question
+5. **Caregiver Feedback:** Dashboard → Done / Dismiss / Custom Suggestion → family interaction logged → suggestion sent to elder via Telegram
+6. **Fallback Sweep (12h):** `expire_stale_recommendations` → pending → `timed_out`
+7. **Weekly Report (Mon 07:00):** `generate_all_weekly_reports` → 7-day aggregates → `weekly_reports` table
+
+---
+
+## Key Features
+
+### 🤖 AI-Powered Multilingual Companion
+- Generates memory-prompting questions in **English, Hindi, Marathi, and Tamil**
+- Uses natural script (Devanagari, Tamil) — not transliterated English
+- Adapts difficulty based on engagement scores (easy → medium → hard)
+- 7-day domain rotation: episodic memory, semantic memory, emotional well-being, etc.
+
+### 👨‍👩‍👧 Caregiver Dashboard
+- Real-time interaction history with sentiment & engagement insights
+- AI-generated recommendations with Done / Dismiss / Custom Suggestion feedback
+- Custom suggestions delivered to elder via Telegram
+- Weekly reports with engagement trends
+- Multi-elder support with per-elder deep-links
+
+### 📱 Telegram Bot (Zero-Friction Access)
+- **Production mode:** Deep-link onboarding (`t.me/Bot?start=elder_<uuid>`)
+- **Demo mode:** Anyone taps `t.me/Bot` → auto-provisions demo elder
+- Voice note support (Whisper transcription)
+- Warm companion replies after each answer
+
+### 🔒 Security & Auth
+- Supabase Auth with JWT tokens
+- Row Level Security on all database tables
+- Webhook secret validation for Telegram
+- Caregiver-scoped data access
 
 ---
 
@@ -103,7 +171,6 @@ Managed via SQL migrations in `backend/database/migrations/`:
 
 | Migration | Description |
 |-----------|-------------|
-| `0001_initial_schema.sql` | Legacy (ignored) |
 | `0002_cognicare_v2_schema.sql` | Core V2 tables + RLS policies |
 | `0003_add_telegram_chat_id.sql` | Telegram demo elder support (chat_id) |
 | `0004_telegram_production.sql` | Telegram production elder support (user_id + deep-link) |
@@ -112,38 +179,29 @@ Managed via SQL migrations in `backend/database/migrations/`:
 
 | Table | Purpose |
 |-------|---------|
-| `elder_profiles` | Elder config: name, language, timezone, proximity, mobility, `cycle_day` (1-7), `telegram_chat_id` (nullable, unique, demo), `telegram_user_id` (nullable, unique, production), `onboarding_method` ('demo' \| 'production') |
-| `daily_interactions` | One row per scheduled question: `elder_id`, `domain`, `question`, `raw_response`, `transcript_source`, `language`, `twilio_message_sid` (idempotency key, reused for `tg:<chat>:<msg>`) |
-| `interaction_insights` | Evaluator output: `sentiment_label`, `sentiment_score`, `engagement_level`, `engagement_score`, `response_depth`, `topics[]`, `safety_flag` |
-| `memories` | `pgvector` (384-dim) long-term memories: `elder_id`, `content`, `embedding`, `source_interaction_id`, `tags[]` |
-| `recommendations` | Coordinator output for caregiver dashboard: `recommendation_text`, `reason`, `status` (pending/done/dismissed/timed_out) |
-| `family_interactions` | Caregiver feedback loop: `reaction` (done/dismiss), `caregiver_suggestion` |
-| `weekly_reports` | 7-day aggregates: `period_start`, `period_end`, `avg_engagement`, `dominant_sentiment`, `topic_frequency`, `total_interactions`, `markdown_summary` |
+| `elder_profiles` | Elder config: name, language, timezone, proximity, mobility, `cycle_day` (1-7), `telegram_chat_id`, `telegram_user_id`, `onboarding_method` ('demo' \| 'production') |
+| `daily_interactions` | One row per question: `elder_id`, `domain`, `question`, `raw_response`, `transcript_source`, `twilio_message_sid` (idempotency key, reused for `tg:<chat>:<msg>`) |
+| `interaction_insights` | Evaluator output: `sentiment_label`, `engagement_level`, `topics[]`, `safety_flag` |
+| `memories` | `pgvector` (384-dim) long-term memories: `elder_id`, `content`, `embedding`, `tags[]` |
+| `recommendations` | Coordinator output: `recommendation_text`, `reason`, `status` (pending/done/dismissed/timed_out) |
+| `family_interactions` | Caregiver feedback: `reaction` (done/dismiss), `caregiver_suggestion` |
+| `weekly_reports` | 7-day aggregates: `avg_engagement`, `dominant_sentiment`, `topic_frequency`, `markdown_summary` |
 
-**RLS:** Enabled on all tables. Policies enforce `caregiver_user_id` = `auth.uid()` for caregiver-scoped access. Elder profiles are inserted by caregivers; interactions are inserted by the service role (webhook/worker).
+**RLS:** Enabled on all tables. Policies enforce `caregiver_user_id` = `auth.uid()` for caregiver-scoped access.
 
 ---
 
 ## Channels: Telegram (Production + Demo)
 
-| Aspect | Telegram Bot (Production Elder) | Telegram Bot (Recruiter Demo) |
-|--------|--------------------------------|-------------------------------|
-| **Access** | Deep-link `t.me/YourBot?start=elder_<uuid>` | Public `t.me/YourBot` |
+| Aspect | Production Elder | Recruiter Demo |
+|--------|-----------------|----------------|
+| **Access** | Deep-link `t.me/Bot?start=elder_<uuid>` | Public `t.me/Bot` → `/start` |
 | **Elder onboarding** | Caregiver creates elder → shares deep-link | Auto-provisioned on first `/start` |
 | **Elder identity** | `telegram_user_id` (from `message.from.id`) | `telegram_chat_id` (from `message.chat.id`) |
-| **`onboarding_method`** | `production` | `demo` |
-| **Messaging** | Freeform, bidirectional, companion replies | Freeform, bidirectional, companion replies |
+| **Languages** | ✅ English, Hindi, Marathi, Tamil | ✅ English, Hindi, Marathi, Tamil |
+| **Voice notes** | ✅ Whisper transcription | ✅ Whisper transcription |
+| **Scheduled questions** | ✅ Celery Beat at `preferred_interaction_time` | ❌ On-demand only |
 | **Cost** | **Free** (Bot API) | **Free** (Bot API) |
-| **Template rules** | **None** | **None** |
-| **Voice notes** | ✅ Supported (Whisper) | ✅ Supported (Whisper) |
-| **Scheduled questions** | ✅ Celery Beat at `preferred_interaction_time` | ❌ Not scheduled (on-demand only) |e/YourBot` — anyone can start | Pre-registered test numbers only (Twilio trial) |
-| **Auth** | Auto-provisions demo elder keyed by `chat_id` | Elder profiles created by caregiver onboarding |
-| **Messaging** | Freeform, bidirectional | Template-only (Twilio trial sender `+17372212163`) |
-| **Template** | N/A | `TWILIO_TEMPLATE_CONTENT_SID=HXfe5ab5f00277942d4d4200328b4d403c` (Appointment Reminders) |
-| **Pipeline** | Same agents (Interviewer→Evaluator→Coordinator→Companion) | Same agents, no companion reply (elder gets no ack) |
-| **Use case** | Recruiter walks up, taps "Start", holds live conversation | Elder receives daily question, replies; caregiver sees dashboard |
-
-**Why both?** Twilio's trial sender is template-gated even in-session (error 21654). A recruiter can't use WhatsApp without pre-registration. Telegram is zero-friction for demos.
 
 ---
 
@@ -154,7 +212,7 @@ Managed via SQL migrations in `backend/database/migrations/`:
 - Supabase project (PostgreSQL + `pgvector` extension)
 - Groq API key (LLM + Whisper)
 - Hugging Face API key (embeddings)
-- Telegram bot token (from @BotFather) — production + demo channel
+- Telegram bot token (from @BotFather)
 
 ---
 
@@ -186,7 +244,17 @@ Services:
 - `beat` — Celery Beat scheduler
 - `redis` — Redis 7 (local)
 
-**4. Register Telegram webhook (for local tunnel testing):**
+**4. Start the frontend:**
+```bash
+cd frontend
+cp .env.example .env.local  # or create manually
+# Set NEXT_PUBLIC_API_URL=http://localhost:8000
+npm install
+npm run dev
+```
+Frontend runs at `http://localhost:3000`.
+
+**5. Register Telegram webhook (for local tunnel testing):**
 ```bash
 # Start cloudflared tunnel to localhost:8000
 cloudflared tunnel --url http://localhost:8000
@@ -198,7 +266,7 @@ print(set_webhook())
 "
 ```
 
-**5. Test:** Open `t.me/YourBotUsername` → `/start`
+**6. Test:** Open `t.me/YourBotUsername` → `/start`
 
 ---
 
@@ -219,11 +287,9 @@ print(set_webhook())
 
 **Register production webhook:**
 ```bash
-docker compose exec api python -c "
-from backend.integrations.telegram_client import set_webhook
-print(set_webhook())
-"
-# Uses TELEGRAM_WEBHOOK_URL=https://cognicare-backend.onrender.com/webhooks/telegram/inbound
+curl -X POST "https://api.telegram.org/botYOUR_TOKEN/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://cognicare-backend.onrender.com/webhooks/telegram/inbound", "drop_pending_updates": true}'
 ```
 
 ---
@@ -244,7 +310,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 # =============================================================================
 LLM_PROVIDER=groq
 GROQ_API_KEY=gsk_your_key
-GROQ_MODEL=openai/gpt-oss-20b
+GROQ_MODEL=llama-3.3-70b-versatile
 GROQ_WHISPER_MODEL=whisper-large-v3-turbo
 
 # =============================================================================
@@ -257,21 +323,18 @@ HUGGINGFACE_API_KEY=hf_your_token
 # =============================================================================
 # Local: redis://redis:6379/0 (docker-compose overrides)
 # Render: auto-injected from cognicare-redis service
-# Upstash: rediss://default:TOKEN@host:6379?ssl_cert_reqs=CERT_REQUIRED
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/0
 CELERY_TIMEZONE=Asia/Kolkata
 
 # =============================================================================
-# Telegram Bot (production + recruiter demo channel)
+# Telegram Bot
 # =============================================================================
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF-your-token
+TELEGRAM_BOT_USERNAME=YourBotUsername
 TELEGRAM_WEBHOOK_URL=https://cognicare-backend.onrender.com/webhooks/telegram/inbound
 TELEGRAM_WEBHOOK_SECRET=your-random-secret-string
 TELEGRAM_VALIDATE_SECRET=true
-TELEGRAM_DEMO_CAREGIVER_ID=uuid-from-supabase-auth-users-table
-TELEGRAM_BOT_USERNAME=CogniCareBot
-```T=true
 TELEGRAM_DEMO_CAREGIVER_ID=uuid-from-supabase-auth-users-table
 ```
 
@@ -280,6 +343,7 @@ TELEGRAM_DEMO_CAREGIVER_ID=uuid-from-supabase-auth-users-table
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 NEXT_PUBLIC_API_URL=https://cognicare-backend.onrender.com
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=YourBotUsername
 ```
 
 ---
@@ -290,67 +354,63 @@ NEXT_PUBLIC_API_URL=https://cognicare-backend.onrender.com
 | File | Responsibility |
 |------|----------------|
 | `interviewer.py` | Generates daily memory questions (DDA + RAG context, multilingual) |
-| `evaluator.py` | **Phase 3A:** `evaluate_response(text)` → structured insight (sentiment, engagement, topics, safety) |
-| `coordinator.py` | **Phase 3A:** `generate_recommendation(elder, evaluator_output, domain, memories, weather)` → caregiver recommendation |
+| `evaluator.py` | `evaluate_response(text)` → structured insight (sentiment, engagement, topics, safety) |
+| `coordinator.py` | `generate_recommendation(elder, evaluator_output, domain, memories, weather)` → caregiver recommendation |
 | `companion.py` | Warm, user-facing reply for Telegram channel (acknowledges elder's actual words) |
-| `escalation.py` | **Phase 3A:** `check_escalation(elder_id, evaluator_output)` → safety/engagement alerts |
-| `report_generator.py` | **Phase 3A:** `generate_weekly_report(elder_id, insights_7d)` → markdown summary |
+| `escalation.py` | `check_escalation(elder_id, evaluator_output)` → safety/engagement alerts |
+| `report_generator.py` | `generate_weekly_report(elder_id, insights_7d)` → markdown summary |
 | `question_engine.py` | Domain rotation (7-day), difficulty adaptation, RAG context building |
 | `embeddings.py` | HF Inference Router client (fixed endpoint) |
-| `base.py` | Shared Groq client with error logging |
+| `base.py` | Shared LLM caller (Groq / Gemini), translation helpers |
 
 ### ⚙️ Celery Pipeline (`backend/celery_app/`)
 | File | Responsibility |
 |------|----------------|
 | `config.py` | Queues, routes, acks_late, time limits, beat schedule import |
 | `beat_schedule.py` | Cron definitions: daily questions (15min), fallback (12h), weekly reports (Mon 07:00) |
-| `tasks/scheduling.py` | `dispatch_daily_questions`, `send_daily_question` (template-aware) |
-| `tasks/inbound.py` | **Core 10-step pipeline** — idempotent, graceful degradation |
+| `tasks/scheduling.py` | `dispatch_daily_questions`, `send_daily_question` |
+| `tasks/telegram_bot.py` | Telegram on-demand pipeline (full agent chain: interview → evaluate → recommend → companion) |
+| `tasks/shared_helpers.py` | Cross-channel helpers: translation, memory storage, escalation, weather |
 | `tasks/fallback.py` | `expire_stale_recommendations` |
 | `tasks/reports.py` | `generate_all_weekly_reports`, `generate_weekly_report_for_elder` |
-| `tasks/telegram_bot.py` | Telegram on-demand pipeline (reuses inbound helpers) |
 
 ### 🔌 Webhooks (`backend/webhooks/`)
 | File | Purpose |
 |------|---------|
-| `twilio_webhook.py` | `POST /webhooks/twilio/inbound` — signature validation, enqueues to `inbound` queue |
 | `telegram_webhook.py` | `POST /webhooks/telegram/inbound` — secret token validation, enqueues to `inbound` queue |
 
 ### 🗄️ Database (`backend/database/`)
 | File | Purpose |
 |------|---------|
-| `db.py` | All Supabase CRUD + helpers (`get_elder_by_whatsapp_number`, `get_elder_by_telegram_chat_id`, `get_open_interaction_for_elder`, `update_daily_interaction`, etc.) |
-| `migrations/0002_cognicare_v2_schema.sql` | Core schema + RLS |
-| `migrations/0003_add_telegram_chat_id.sql` | Telegram demo support |
+| `db.py` | All Supabase CRUD + helpers (elder CRUD with cascade deletes, deep-link support, interaction management) |
 
 ### 🌐 API Routes (`backend/api/routes/`)
 | File | Endpoints |
 |------|-----------|
-| `elders.py` | `POST/GET/PATCH /api/elders` — onboarding & profile management |
-| `recommendations.py` | `GET /api/{elder_id}/recommendations`, `POST /recommendations/{id}/done|dismiss|suggest` — caregiver dashboard |
+| `elders.py` | `POST /api/elders/telegram` (create), `GET /{id}/deep-link`, `GET/PATCH/DELETE /{id}` |
+| `recommendations.py` | `GET /{id}/recommendations`, `POST /done|dismiss|suggest` (with Telegram delivery) |
+| `reports.py` | `GET /{id}/weekly-reports`, `GET /{id}/weekly-reports/latest` |
 
 ### 🖥️ Frontend (`frontend/src/`)
 | Path | Purpose |
 |------|---------|
-| `components/features/CheckInTab.tsx` | Elder check-in (voice/text, TTS, replay) |
-| `components/features/DashboardTab.tsx` | Caregiver dashboard (history, insights, recommendations) |
-| `components/layout/SettingsSidebar.tsx` | Language, accessibility, elder profile |
-| `hooks/useAudioRecorder.ts` | Browser MediaRecorder + Whisper upload |
-| `utils/translations.ts` | EN/HI/MR/TA UI strings |
+| `components/features/DashboardTab.tsx` | Caregiver dashboard (elder list, deep-links, recommendations, interaction history, weekly reports) |
+| `components/features/RecommendationCard.tsx` | Recommendation card with Done/Dismiss/Suggest actions |
+| `components/layout/SettingsSidebar.tsx` | Language, accessibility settings |
+| `lib/api/recommendations.ts` | API client for recommendation actions |
 
 ---
 
 ## Phase Status
 
-| Phase | Branch | Status | Tests | Description |
-|-------|--------|--------|-------|-------------|
-| **Pre-3A fixes** | `main` | ✅ Merged | — | Bug fixes: `source_id`→`source_interaction_id`, engagement case, imports |
-| **Phase 3A** | `feature/evaluator-escalation-reports` | ✅ Complete, **unpushed** | 28/28 | Evaluator contract, escalation, weekly report orchestrator |
-| **Phase 3B** | `feature/celery-pipeline-3b` | ✅ Complete, **unpushed** | 103/103 | Async Celery pipeline, Twilio/Whisper, webhook auth, beat scheduler |
-| **Telegram Demo** | `main` | ✅ Merged | — | Telegram bot, auto-provisioning, companion reply, webhook |
-| **Render Deploy** | `main` | ✅ Live | — | Docker + honcho + Upstash Redis on Render Free tier |
-
-**Next:** Phase 4A (Frontend V2 integration — connect dashboard to real V2 endpoints, WebSocket for live updates, recommendation feedback UI).
+| Phase | Status | Description |
+|-------|--------|-------------|
+| **Phase 1-2** | ✅ Complete | Desktop app, core agents, database schema |
+| **Phase 3A** | ✅ Complete | Evaluator, escalation, weekly reports |
+| **Phase 3B** | ✅ Complete | Async Celery pipeline, webhook auth, beat scheduler |
+| **Telegram Integration** | ✅ Live | Production + demo channels, deep-link onboarding, multilingual |
+| **Caregiver Dashboard** | ✅ Live | Next.js frontend, Supabase auth, recommendations, weekly reports |
+| **Render Deployment** | ✅ Live | Docker + honcho + Upstash Redis on Render Free tier |
 
 ---
 
@@ -358,8 +418,8 @@ NEXT_PUBLIC_API_URL=https://cognicare-backend.onrender.com
 
 Developed by **Atharv Bandekar** and **Shubham Govekar** for the AICTE | IBM SkillsBuild Internship (BharatCares).
 
-- **Atharv (Member A):** Backend architecture, AI agents (3A), Celery pipeline (3B), Telegram demo, deployment
-- **Shubham (Member B):** Frontend (V1), Database schema (V2), Supabase/RLS, Twilio integration
+- **Atharv (Member A):** Backend architecture, AI agents, Celery pipeline, Telegram integration, deployment
+- **Shubham (Member B):** Frontend, Database schema, Supabase/RLS, initial Twilio integration
 
 ---
 
