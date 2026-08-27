@@ -301,16 +301,7 @@ export default function DashboardTab({ session }: DashboardTabProps) {
     }
   }, [deleteConfirm, handleDeleteElder, loadElders]);
 
-  // Force-close modal if it gets stuck (safety net for edge cases)
-  useEffect(() => {
-    if (deleteConfirm && isDeleting) {
-      const timer = setTimeout(() => {
-        console.warn("Force-closing stuck delete modal");
-        setDeleteConfirm(null);
-      }, 10000); // 10 second safety net
-      return () => clearTimeout(timer);
-    }
-  }, [deleteConfirm, isDeleting]);
+
 
   const createTelegramElder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -421,64 +412,7 @@ export default function DashboardTab({ session }: DashboardTabProps) {
     }
   };
 
-  // Modern confirmation modal component
-  const ConfirmDeleteModal = ({ isOpen, onClose, onConfirm, elderName, isLoading }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onConfirm: () => void;
-    elderName: string;
-    isLoading: boolean;
-  }) => {
-    if (!isOpen) return null;
 
-    return (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-fade-in">
-        <div className="w-full max-w-md bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
-          <div className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-rose-500/20 flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="text-rose-400 h-6 w-6" />
-              </div>
-            </div>
-            <h3 className="text-xl font-bold text-slate-100 text-center mb-2">Delete Elder?</h3>
-            <p className="text-slate-400 text-center mb-6">
-              Are you sure you want to delete <strong className="text-slate-100">{elderName}</strong>?
-              This will permanently remove all their data including interaction history,
-              recommendations, and weekly reports. This action cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                onClick={onClose}
-                disabled={isLoading}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={onConfirm}
-                disabled={isLoading}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 border-rose-600"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete Permanently
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   useEffect(() => {
     if (session?.access_token) {
@@ -794,13 +728,53 @@ export default function DashboardTab({ session }: DashboardTabProps) {
       )}
 
       {/* Delete Confirmation Modal */}
-      <ConfirmDeleteModal
-        isOpen={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        onConfirm={handleConfirmDelete}
-        elderName={deleteConfirm?.name || ""}
-        isLoading={isDeleting}
-      />
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-rose-500/20 flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="text-rose-400 h-6 w-6" />
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-slate-100 text-center mb-2">Delete Elder?</h3>
+              <p className="text-slate-400 text-center mb-6">
+                Are you sure you want to delete <strong className="text-slate-100">{deleteConfirm.name}</strong>?
+                This will permanently remove all their data including interaction history,
+                recommendations, and weekly reports. This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  variant="secondary"
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={isDeleting}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 border-rose-600"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Permanently
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
