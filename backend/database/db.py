@@ -53,7 +53,56 @@ def update_elder_profile(elder_id: str, data: dict) -> dict:
 
 
 def delete_elder(elder_id: str) -> dict:
-    """Deletes an elder profile and all associated data (cascades via FK)."""
+    """Deletes an elder profile and all associated data.
+
+    Removes child records in dependency order before deleting the elder,
+    because Supabase FK constraints do not always CASCADE through
+    intermediate tables (e.g. family_interactions -> recommendations).
+    """
+    # 1. Delete family_interactions (references recommendations.id)
+    try:
+        # Get all recommendation IDs for this elder
+        recs = supabase.table('recommendations').select('id').eq('elder_id', elder_id).execute()
+        rec_ids = [r['id'] for r in (recs.data or [])]
+        if rec_ids:
+            supabase.table('family_interactions').delete().in_('recommendation_id', rec_ids).execute()
+    except Exception:
+        pass
+
+    # 2. Delete interaction_insights (references daily_interactions.id)
+    try:
+        interactions = supabase.table('daily_interactions').select('id').eq('elder_id', elder_id).execute()
+        interaction_ids = [i['id'] for i in (interactions.data or [])]
+        if interaction_ids:
+            supabase.table('interaction_insights').delete().in_('interaction_id', interaction_ids).execute()
+    except Exception:
+        pass
+
+    # 3. Delete memories (references elder_profiles.id)
+    try:
+        supabase.table('memories').delete().eq('elder_id', elder_id).execute()
+    except Exception:
+        pass
+
+    # 4. Delete recommendations (references elder_profiles.id)
+    try:
+        supabase.table('recommendations').delete().eq('elder_id', elder_id).execute()
+    except Exception:
+        pass
+
+    # 5. Delete weekly_reports (references elder_profiles.id)
+    try:
+        supabase.table('weekly_reports').delete().eq('elder_id', elder_id).execute()
+    except Exception:
+        pass
+
+    # 6. Delete daily_interactions (references elder_profiles.id)
+    try:
+        supabase.table('daily_interactions').delete().eq('elder_id', elder_id).execute()
+    except Exception:
+        pass
+
+    # 7. Finally delete the elder profile itself
     response = supabase.table('elder_profiles').delete().eq('id', elder_id).execute()
     if not response.data:
         raise ValueError(f"Elder {elder_id} not found")
