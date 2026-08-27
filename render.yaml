@@ -1,10 +1,9 @@
 services:
-  # API — receives HTTP requests (Telegram webhook, dashboard API)
   - type: web
     name: cognicare
     runtime: python
     buildCommand: "pip install --no-cache-dir -r requirements.txt"
-    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "honcho start"
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
@@ -18,47 +17,6 @@ services:
           type: redis
           name: cognicare-redis
           property: connectionString
-
-  # Celery worker — processes Telegram updates, scheduling, fallback, escalation, reports
-  - type: worker
-    name: cognicare-worker
-    runtime: python
-    buildCommand: "pip install --no-cache-dir -r requirements.txt"
-    startCommand: "celery -A backend.celery_app:celery_app worker -Q scheduling,inbound,fallback,escalation,reports --loglevel=info"
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: cognicare-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: cognicare-redis
-          property: connectionString
-
-  # Celery Beat — scheduler for periodic tasks (daily questions, weekly reports, fallback sweep)
-  - type: worker
-    name: cognicare-beat
-    runtime: python
-    buildCommand: "pip install --no-cache-dir -r requirements.txt"
-    startCommand: "celery -A backend.celery_app:celery_app beat --loglevel=info"
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: cognicare-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: cognicare-redis
-          property: connectionString
-
   - type: redis
     name: cognicare-redis
     plan: free
