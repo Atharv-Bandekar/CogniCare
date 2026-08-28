@@ -10,7 +10,6 @@ Originally a local desktop application, the system has been re-architected into 
 
 ## 📸 App Screenshots
 
-> *Replace the placeholder images below with actual screenshots from your app.*
 
 | | |
 |---|---|
