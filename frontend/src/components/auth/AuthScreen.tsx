@@ -7,6 +7,9 @@ import { supabase } from "../../utils/supabaseClient";
  * * Provides a secure form for users to sign up for a new account 
  * or log into an existing account using Email and Password.
  */
+const DEMO_EMAIL = "demo@cognicare.ai";
+const DEMO_PASSWORD = "Demo@1234";
+
 export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,6 +37,26 @@ export default function AuthScreen() {
       
       // 2. Force the screen to display the raw JSON structure
       setMessage(JSON.stringify(err, null, 2)); 
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemo = async () => {
+    setLoading(true);
+    setMessage("");
+    setEmail(DEMO_EMAIL);
+    setPassword(DEMO_PASSWORD);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: DEMO_EMAIL,
+        password: DEMO_PASSWORD,
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("FULL AUTH ERROR:", err);
+      setMessage(JSON.stringify(err, null, 2));
     } finally {
       setLoading(false);
     }
@@ -101,6 +124,28 @@ export default function AuthScreen() {
           >
             {isSignUp ? "Already have an account? Sign In" : "Need an account? Sign Up"}
           </button>
+        </div>
+
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-700" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-slate-900 px-3 text-slate-500">or</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleDemo}
+            disabled={loading}
+            className="w-full mt-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-900/20"
+          >
+            🚀 Try Demo
+          </button>
+          <p className="text-center text-xs text-slate-500 mt-2">
+            Explore with a sample caregiver account
+          </p>
         </div>
 
       </div>

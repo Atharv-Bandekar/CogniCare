@@ -1,0 +1,12 @@
+{
+  "name": "cognicare-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CogniCare AI - full-stack cognitive engagement platform (Next.js frontend + FastAPI backend)",
+  "scripts": {
+    "setup": "python3 -m pip install -r requirements.txt --quiet && npm --prefix frontend install",
+    "dev": "sh scripts/preview.sh",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run start"
+  }
+}
