@@ -27,14 +27,6 @@ export default function Home() {
 
   const isDemoAccount = session?.user?.email === "demo@cognicare.ai";
 
-  // Auto-show guide on first demo visit
-  useEffect(() => {
-    if (isDemoAccount && !sessionStorage.getItem("demo-guide-seen")) {
-      setIsGuideOpen(true);
-      sessionStorage.setItem("demo-guide-seen", "true");
-    }
-  }, [isDemoAccount]);
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
