@@ -22,25 +22,6 @@ Originally a local desktop application, the system has been re-architected into 
 | **Weekly Report** | **Dark Mode UI** |
 | ![Weekly Report](screenshots/weekly-report.png) | ![Dark Mode](screenshots/dark-mode.png) |
 
-<details>
-<summary>📸 How to add screenshots</summary>
-
-1. Take screenshots of each screen (dashboard, telegram bot, etc.)
-2. Save them in a `screenshots/` folder at the project root
-3. Push to GitHub — the images will render automatically in the README
-
-Suggested screenshots to capture:
-- `dashboard.png` — Main caregiver dashboard with elder list
-- `add-elder.png` — "Add Elder via Telegram" form with language selector
-- `telegram-bot.png` — Telegram conversation showing multilingual questions
-- `deep-link.png` — Deep-link card in the dashboard
-- `recommendations.png` — Recommendation cards with Done/Dismiss/Suggest actions
-- `interaction-history.png` — Interaction history with sentiment & engagement badges
-- `weekly-report.png` — Weekly report summary
-- `dark-mode.png` — Full dashboard in dark mode
-
-</details>
-
 ---
 
 ## Table of Contents
