@@ -1,35 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
-
 interface DemoBannerProps {
   elderCount: number;
 }
 
 /**
  * Persistent banner shown when logged in with the shared demo account.
- * Dismissible per session via the X button, reappears on next visit.
+ * Always visible — never dismissible.
  */
 export default function DemoBanner({ elderCount }: DemoBannerProps) {
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    if (sessionStorage.getItem("demo-banner-dismissed")) setDismissed(true);
-  }, []);
-
-  if (dismissed) return null;
-
   return (
     <div className="relative bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-xl p-4 sm:p-5">
-      <button
-        onClick={() => { setDismissed(true); sessionStorage.setItem("demo-banner-dismissed", "true"); }}
-        className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
-        aria-label="Dismiss"
-      >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">
           <svg className="h-5 w-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

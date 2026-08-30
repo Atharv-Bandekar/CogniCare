@@ -33,27 +33,7 @@ export default function SettingsSidebar({
         </div>
 
         <div className="space-y-8 flex-1">
-          {/* 1. Language Selection */}
-          <div className="space-y-3">
-            <label className="text-slate-300 font-semibold text-lg block">{t.appLang}</label>
-            <div className="grid grid-cols-2 gap-3">
-              {["English", "Hindi", "Marathi", "Tamil"].map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => updateSetting("language", lang)}
-                  className={`py-3 rounded-xl font-bold transition-all text-sm ${
-                    settings.language === lang 
-                    ? "bg-blue-600 text-white shadow-md border-2 border-blue-400" 
-                    : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700"
-                  }`}
-                >
-                  {lang}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 2. Text Size */}
+          {/* Text Size */}
           <div className="space-y-3">
             <label className="text-slate-300 font-semibold text-lg block">{t.textSize}</label>
             <div className="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
@@ -75,7 +55,7 @@ export default function SettingsSidebar({
             </div>
           </div>
 
-          {/* 3. Voice Speed */}
+          {/* Voice Speed */}
           <div className="space-y-3">
             <label className="text-slate-300 font-semibold text-lg block">{t.voiceSpeed}</label>
             <div className="space-y-2">
