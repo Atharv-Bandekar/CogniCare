@@ -56,6 +56,11 @@ export default function DemoBanner({ elderCount, onOpenGuide }: DemoBannerProps)
             may appear below. Create your own elder with a unique name to try the
             full flow, or delete any existing ones.
           </p>
+          <p className="text-xs text-amber-400/70 leading-relaxed mt-2">
+            ⏱ The backend runs on a free-tier host and may take up to 50 seconds to
+            wake up on the first action. Please be patient — it will respond after
+            the cold start.
+          </p>
 
           <div className="flex flex-wrap items-center gap-2 mt-3">
             {elderCount > 0 && (

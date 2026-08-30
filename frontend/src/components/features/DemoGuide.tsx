@@ -11,7 +11,7 @@ const steps = [
   {
     title: "Create an Elder Profile",
     description:
-      'Click "Add Elder via Telegram" to create a profile for the person you want to monitor. Give them a name, pick a language (English, Hindi, Marathi, or Tamil), and set a preferred time.',
+      'Click "Add Elder via Telegram" to create a profile for the person you want to monitor. Give them a name, pick a language (English, Hindi, Marathi, or Tamil), and set a preferred time.\n\n⏱ Note: The backend runs on a free-tier host and may take up to 50 seconds to wake up on the first action. Please be patient after clicking Create.',
     color: "text-blue-400",
     bg: "bg-blue-500/10",
     svgPath: (
