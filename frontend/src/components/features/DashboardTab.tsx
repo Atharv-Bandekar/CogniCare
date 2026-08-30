@@ -144,7 +144,12 @@ interface Interaction {
   } | null;
 }
 
-export default function DashboardTab({ session }: DashboardTabProps) {
+interface DashboardTabExtraProps {
+  isGuideOpen?: boolean;
+  onGuideClose?: () => void;
+}
+
+export default function DashboardTab({ session, isGuideOpen, onGuideClose }: DashboardTabProps & DashboardTabExtraProps) {
   const [elders, setElders] = useState<Elder[]>([]);
   const [selectedElder, setSelectedElder] = useState<Elder | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -165,7 +170,6 @@ export default function DashboardTab({ session }: DashboardTabProps) {
   const [latestReport, setLatestReport] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ elderId: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   // Detect demo account
@@ -435,14 +439,6 @@ export default function DashboardTab({ session }: DashboardTabProps) {
 
 
 
-  // Auto-show guide on first demo visit
-  useEffect(() => {
-    if (isDemoAccount && !sessionStorage.getItem("demo-guide-seen")) {
-      setShowGuide(true);
-      sessionStorage.setItem("demo-guide-seen", "true");
-    }
-  }, [isDemoAccount]);
-
   useEffect(() => {
     if (session?.access_token) {
       loadElders();
@@ -463,40 +459,23 @@ export default function DashboardTab({ session }: DashboardTabProps) {
     <div className="space-y-6">
       {/* Demo account banner */}
       {isDemoAccount && (
-        <DemoBanner elderCount={elders.length} onOpenGuide={() => setShowGuide(true)} />
+        <DemoBanner elderCount={elders.length} />
       )}
 
       {/* Quick Start Guide modal */}
-      <DemoGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
+      <DemoGuide isOpen={!!isGuideOpen} onClose={() => onGuideClose?.()} />
 
       {/* Header with Add Elder */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h2 className="text-2xl font-bold text-blue-300">Caregiver Dashboard</h2>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {isDemoAccount && (
-            <Button
-              variant="secondary"
-              onClick={() => setShowGuide(true)}
-              className="flex items-center gap-1.5"
-              title="Quick Start Guide"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              Guide
-            </Button>
-          )}
-          <Button
-            variant="primary"
-            onClick={() => { setCreateError(null); setIsAddingElder(true); }}
-            className="flex-1 sm:flex-none"
-          >
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Elder via Telegram
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          onClick={() => { setCreateError(null); setIsAddingElder(true); }}
+          className="w-full sm:w-auto"
+        >
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Add Elder via Telegram
+        </Button>
       </div>
 
       {/* Elder List */}
