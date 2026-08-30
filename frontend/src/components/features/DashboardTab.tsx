@@ -9,6 +9,8 @@ import { Input } from "../ui/Input";
 import { Badge } from "../ui/Badge";
 import { RecommendationCard } from "./RecommendationCard";
 import { WeeklyReportView } from "./WeeklyReportView";
+import DemoBanner from "./DemoBanner";
+import DemoGuide from "./DemoGuide";
 
 // Inline SVG icons to avoid external dependency
 interface IconProps {
@@ -163,6 +165,11 @@ export default function DashboardTab({ session }: DashboardTabProps) {
   const [latestReport, setLatestReport] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ elderId: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Detect demo account
+  const isDemoAccount = session?.user?.email === "demo@cognicare.ai";
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const authHeader = useMemo(() => ({ "Authorization": `Bearer ${session?.access_token}` }), [session?.access_token]);
@@ -306,6 +313,7 @@ export default function DashboardTab({ session }: DashboardTabProps) {
   const createTelegramElder = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setCreateError(null);
     try {
       const res = await fetch(`${apiUrl}/api/elders/telegram`, {
         method: "POST",
@@ -316,6 +324,17 @@ export default function DashboardTab({ session }: DashboardTabProps) {
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        const errMsg = data?.detail || "Failed to create elder";
+        // Friendly error for duplicate name (unique constraint on whatsapp_number)
+        if (errMsg.includes("duplicate") || errMsg.includes("unique") || errMsg.includes("already exists")) {
+          setCreateError(`An elder with the name "${newElderForm.name}" already exists on this account. Please use a different name.`);
+        } else {
+          setCreateError(errMsg);
+        }
+        setIsSubmitting(false);
+        return;
+      }
       // Fetch deep-link for the new elder
       if (data.id) {
         const linkRes = await fetch(`${apiUrl}/api/elders/${data.id}/deep-link`, { headers: authHeader });
@@ -332,10 +351,12 @@ export default function DashboardTab({ session }: DashboardTabProps) {
       }
       setIsSubmitting(false);
       setIsAddingElder(false);
+      setCreateError(null);
       setNewElderForm({ name: "", preferred_language: "en", preferred_interaction_time: "09:00", timezone: "Asia/Kolkata", proximity: "remote" });
       loadElders();
     } catch (error) {
       console.error("Failed to create elder", error);
+      setCreateError("Network error — is the backend running?");
       setIsSubmitting(false);
     }
   };
@@ -414,6 +435,14 @@ export default function DashboardTab({ session }: DashboardTabProps) {
 
 
 
+  // Auto-show guide on first demo visit
+  useEffect(() => {
+    if (isDemoAccount && !sessionStorage.getItem("demo-guide-seen")) {
+      setShowGuide(true);
+      sessionStorage.setItem("demo-guide-seen", "true");
+    }
+  }, [isDemoAccount]);
+
   useEffect(() => {
     if (session?.access_token) {
       loadElders();
@@ -432,17 +461,42 @@ export default function DashboardTab({ session }: DashboardTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Demo account banner */}
+      {isDemoAccount && (
+        <DemoBanner elderCount={elders.length} onOpenGuide={() => setShowGuide(true)} />
+      )}
+
+      {/* Quick Start Guide modal */}
+      <DemoGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
+
       {/* Header with Add Elder */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h2 className="text-2xl font-bold text-blue-300">Caregiver Dashboard</h2>
-        <Button
-          variant="primary"
-          onClick={() => setIsAddingElder(true)}
-          className="w-full sm:w-auto"
-        >
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add Elder via Telegram
-        </Button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {isDemoAccount && (
+            <Button
+              variant="secondary"
+              onClick={() => setShowGuide(true)}
+              className="flex items-center gap-1.5"
+              title="Quick Start Guide"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              Guide
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            onClick={() => { setCreateError(null); setIsAddingElder(true); }}
+            className="flex-1 sm:flex-none"
+          >
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Add Elder via Telegram
+          </Button>
+        </div>
       </div>
 
       {/* Elder List */}
@@ -519,6 +573,11 @@ export default function DashboardTab({ session }: DashboardTabProps) {
               Create a production elder profile. You'll get a deep-link to share with the elder.
               When they tap it, their Telegram account links automatically.
             </p>
+            {createError && (
+              <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-sm text-rose-300">
+                {createError}
+              </div>
+            )}
             <form onSubmit={createTelegramElder} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">Name</label>

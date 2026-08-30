@@ -141,7 +141,7 @@ export default function AuthScreen() {
             disabled={loading}
             className="w-full mt-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-900/20"
           >
-            🚀 Try Demo
+            Try Demo
           </button>
           <p className="text-center text-xs text-slate-500 mt-2">
             Explore with a sample caregiver account
