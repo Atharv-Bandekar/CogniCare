@@ -17,10 +17,6 @@ Originally a local desktop application, the system has been re-architected into 
 | ![Caregiver Dashboard](screenshots/dashboard.png) | ![Add Elder via Telegram](screenshots/add-elder.png) |
 | **Telegram Bot — Multilingual Questions** | **Deep-Link Onboarding** |
 | ![Telegram Bot Conversation](screenshots/telegram-bot.png) | ![Deep Link Flow](screenshots/deep-link.png) |
-| **Recommendations & Feedback** | **Interaction History & Insights** |
-| ![Recommendations](screenshots/recommendations.png) | ![Interaction History](screenshots/interaction-history.png) |
-| **Weekly Report** | **Dark Mode UI** |
-| ![Weekly Report](screenshots/weekly-report.png) | ![Dark Mode](screenshots/dark-mode.png) |
 
 ---
 
