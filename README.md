@@ -11,7 +11,6 @@ Originally a local desktop application, the system has been re-architected into 
 ## 📸 App Screenshots
 
 
-| | |
 |---|---|
 | **Caregiver Dashboard** | **Elder Management** |
 | ![Caregiver Dashboard](screenshots/dashboard.png) | ![Add Elder via Telegram](screenshots/add-elder.png) |
